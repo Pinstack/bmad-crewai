@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "bmad-crewai"
 version = "0.1.0"
-description = "BMAD integration with CrewAI agents"
+description = "CrewAI orchestration layer for BMAD-Method framework - reads BMAD templates and coordinates agents to write artefacts to BMAD folder structure"
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.8"
@@ -26,7 +26,13 @@ classifiers = [
 ]
 dependencies = [
     "crewai>=0.1.0",
+    "aiohttp>=3.8.0",
+    "pyyaml>=6.0.0",
 ]
+
+[project.scripts]
+bmad-crewai = "bmad_crewai.cli:main"
+bmad-simple = "bmad_crewai.simple_cli:main"
 
 [project.optional-dependencies]
 dev = [
