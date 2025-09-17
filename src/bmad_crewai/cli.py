@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from .config import APIConfig, BMADConfig, ConfigManager
-from .core import BmadCrewAI
+from .core import BmadCrewAI, RateLimitInfo
 from .exceptions import BmadCrewAIError
 
 logger = logging.getLogger(__name__)
