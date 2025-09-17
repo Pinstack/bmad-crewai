@@ -22,7 +22,7 @@ __email__ = "raedmund@example.com"
 
 from .cli import CLI, main
 from .config import APIConfig, BMADConfig, ConfigManager, CredentialStore
-from .core import APIClient, BmadCrewAI, RateLimiter
+from .core import APIClient, BmadCrewAI, RateLimiter, TemplateInfo
 from .exceptions import (
     AgentError,
     APIError,
@@ -41,6 +41,7 @@ __all__ = [
     "BmadCrewAI",
     "APIClient",
     "RateLimiter",
+    "TemplateInfo",
     # Configuration
     "ConfigManager",
     "CredentialStore",

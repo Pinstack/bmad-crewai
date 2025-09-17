@@ -5,9 +5,11 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 import aiohttp
+import yaml
 from aiohttp import ClientError, ClientTimeout
 
 from .config import APIConfig, ConfigManager
@@ -40,6 +42,25 @@ class APIError(Exception):
 
 class RateLimitError(APIError):
     """Exception raised when rate limit is exceeded."""
+
+    pass
+
+
+@dataclass
+class TemplateInfo:
+    """Information about a loaded BMAD template."""
+
+    id: str
+    name: str
+    version: str
+    template_path: Path
+    workflow_mode: str
+    sections: Dict[str, Any]
+    agent_config: Dict[str, Any]
+
+
+class TemplateError(Exception):
+    """Exception raised when template loading or validation fails."""
 
     pass
 
@@ -248,6 +269,7 @@ class BmadCrewAI:
         self.config_manager = ConfigManager(config_file)
         self.rate_limiter = RateLimiter()
         self.api_clients: Dict[str, APIClient] = {}
+        self.templates: Dict[str, TemplateInfo] = {}
         self.logger = logging.getLogger(__name__)
 
         # Configure logging
@@ -306,6 +328,172 @@ class BmadCrewAI:
         except Exception as e:
             self.logger.error(f"Unexpected error for {provider}: {e}")
             raise APIError(f"Unexpected error: {str(e)}") from e
+
+    def load_bmad_templates(self) -> Dict[str, TemplateInfo]:
+        """Load all BMAD templates from .bmad-core/templates/ directory.
+
+        Returns:
+            Dict[str, TemplateInfo]: Dictionary mapping template IDs to template info
+
+        Raises:
+            TemplateError: If template loading or validation fails
+        """
+        templates_dir = Path(".bmad-core/templates")
+        if not templates_dir.exists():
+            raise TemplateError(f"BMAD templates directory not found: {templates_dir}")
+
+        self.logger.info(f"Loading BMAD templates from {templates_dir}")
+
+        for template_file in templates_dir.glob("*.yaml"):
+            try:
+                template_info = self._load_single_template(template_file)
+                self.templates[template_info.id] = template_info
+                self.logger.debug(f"Loaded template: {template_info.id} ({template_info.name})")
+            except Exception as e:
+                self.logger.error(f"Failed to load template {template_file}: {e}")
+                raise TemplateError(f"Template loading failed for {template_file}: {e}") from e
+
+        self.logger.info(f"Successfully loaded {len(self.templates)} BMAD templates")
+        return self.templates
+
+    def _load_single_template(self, template_path: Path) -> TemplateInfo:
+        """Load and validate a single BMAD template.
+
+        Args:
+            template_path: Path to the YAML template file
+
+        Returns:
+            TemplateInfo: Parsed and validated template information
+
+        Raises:
+            TemplateError: If template validation fails
+        """
+        try:
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template_data = yaml.safe_load(f)
+        except yaml.YAMLError as e:
+            raise TemplateError(f"Invalid YAML syntax in {template_path}: {e}") from e
+        except FileNotFoundError:
+            raise TemplateError(f"Template file not found: {template_path}")
+
+        # Validate required fields
+        if not isinstance(template_data, dict):
+            raise TemplateError(f"Template must be a dictionary: {template_path}")
+
+        template_meta = template_data.get('template', {})
+        workflow = template_data.get('workflow', {})
+        sections = template_data.get('sections', [])
+        agent_config = template_data.get('agent_config', {})
+
+        # Validate required template metadata
+        required_fields = ['id', 'name', 'version']
+        for field in required_fields:
+            if field not in template_meta:
+                raise TemplateError(f"Missing required field '{field}' in template {template_path}")
+
+        # Validate template ID format
+        template_id = template_meta['id']
+        if not isinstance(template_id, str) or not template_id.strip():
+            raise TemplateError(f"Invalid template ID: {template_id}")
+
+        # Extract workflow mode
+        workflow_mode = workflow.get('mode', 'interactive')
+        if workflow_mode not in ['interactive', 'batch', 'automated']:
+            self.logger.warning(f"Unknown workflow mode '{workflow_mode}' in {template_path}, defaulting to 'interactive'")
+            workflow_mode = 'interactive'
+
+        # Validate sections structure
+        if not isinstance(sections, list):
+            raise TemplateError(f"Sections must be a list in template {template_path}")
+
+        # Convert sections list to dictionary by ID for easier access
+        sections_dict = {}
+        for section in sections:
+            if not isinstance(section, dict) or 'id' not in section:
+                raise TemplateError(f"Invalid section format in template {template_path}")
+            sections_dict[section['id']] = section
+
+        # Extract agent assignments and validate
+        editable_sections = agent_config.get('editable_sections', [])
+        if not isinstance(editable_sections, list):
+            raise TemplateError(f"editable_sections must be a list in template {template_path}")
+
+        # Validate agent ownership in sections
+        for section_id, section in sections_dict.items():
+            if 'owner' not in section:
+                self.logger.warning(f"Section '{section_id}' missing owner in {template_path}")
+            if 'editors' in section and not isinstance(section['editors'], list):
+                raise TemplateError(f"editors must be a list for section '{section_id}' in {template_path}")
+
+        return TemplateInfo(
+            id=template_meta['id'],
+            name=template_meta['name'],
+            version=template_meta['version'],
+            template_path=template_path,
+            workflow_mode=workflow_mode,
+            sections=sections_dict,
+            agent_config=agent_config
+        )
+
+    def get_template(self, template_id: str) -> Optional[TemplateInfo]:
+        """Get a loaded template by ID.
+
+        Args:
+            template_id: Template identifier
+
+        Returns:
+            TemplateInfo or None: Template information if found
+        """
+        return self.templates.get(template_id)
+
+    def list_templates(self) -> Dict[str, Dict[str, Any]]:
+        """List all loaded templates with basic information.
+
+        Returns:
+            Dict[str, Dict[str, Any]]: Template summaries by ID
+        """
+        return {
+            template_id: {
+                'name': info.name,
+                'version': info.version,
+                'workflow_mode': info.workflow_mode,
+                'sections_count': len(info.sections)
+            }
+            for template_id, info in self.templates.items()
+        }
+
+    def validate_template_dependencies(self, template_id: str) -> bool:
+        """Validate that a template's dependencies are satisfied.
+
+        Args:
+            template_id: Template identifier to validate
+
+        Returns:
+            bool: True if dependencies are satisfied
+
+        Raises:
+            TemplateError: If dependencies are not satisfied
+        """
+        template = self.get_template(template_id)
+        if not template:
+            raise TemplateError(f"Template not found: {template_id}")
+
+        # Check for required agent configurations
+        required_agents = ['scrum-master', 'product-owner', 'dev-agent', 'qa-agent', 'product-manager', 'architect']
+        available_agents = []  # In future, this could check actual agent availability
+
+        # For now, just log warnings about agent dependencies
+        for section_id, section in template.sections.items():
+            owner = section.get('owner')
+            if owner and owner not in required_agents:
+                self.logger.warning(f"Unknown agent '{owner}' required for section '{section_id}' in template {template_id}")
+
+        # Check for template-specific dependencies
+        workflow = template.workflow_mode
+        if workflow == 'automated' and not template.agent_config.get('allow_automated', False):
+            raise TemplateError(f"Template {template_id} has automated workflow but doesn't allow automated execution")
+
+        return True
 
     async def close(self):
         """Close all API clients."""
