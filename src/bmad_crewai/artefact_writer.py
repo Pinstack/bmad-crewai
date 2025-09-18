@@ -25,6 +25,13 @@ class BMADArtefactWriter:
         "qa_gates": "docs/qa/gates/",  # Quality gate files
         "epics": "docs/epics/",  # Epic documentation
         "templates": "docs/templates/",  # Template storage
+        # Additional comprehensive document types
+        "brief": "docs/brief.md",  # Project brief document
+        "research": "docs/research/",  # Research documentation
+        "specifications": "docs/specifications/",  # Technical specifications
+        "diagrams": "docs/diagrams/",  # Architecture diagrams
+        "protocols": "docs/protocols/",  # Communication protocols
+        "guides": "docs/guides/",  # User/developer guides
     }
 
     def __init__(self, base_path: Optional[str] = None):
@@ -41,6 +48,223 @@ class BMADArtefactWriter:
         self.qa_assessments_path = self.qa_path / "assessments"
 
         logger.info(f"Artefact writer initialized with base path: {self.base_path}")
+
+        # Initialize artefact metadata tracking
+        self.artefact_metadata = {}
+
+    def validate_artefact_naming_conventions(
+        self, artefact_type: str, filename: str
+    ) -> Dict[str, Any]:
+        """Validate artefact naming conventions and provide suggestions.
+
+        Args:
+            artefact_type: Type of artefact
+            filename: Proposed filename
+
+        Returns:
+            Dict with validation results and suggestions
+        """
+        results = {
+            "valid": True,
+            "issues": [],
+            "suggestions": [],
+            "conventions_applied": [],
+        }
+
+        try:
+            # Apply type-specific naming conventions
+            if artefact_type == "stories":
+                # Stories should follow: {epic_num}.{story_num}.{story_title_short}.story.md
+                if not filename.endswith(".story.md"):
+                    results["issues"].append("Story files should end with '.story.md'")
+                    results["suggestions"].append(
+                        f"Rename to: {filename.replace('.md', '.story.md')}"
+                    )
+                    results["valid"] = False
+                else:
+                    results["conventions_applied"].append(
+                        "Story naming convention applied"
+                    )
+
+            elif artefact_type == "qa_gates":
+                # Gates should follow: {epic_num}.{story_num}-{story_slug}.yml
+                if not filename.endswith(".yml"):
+                    results["issues"].append("Gate files should end with '.yml'")
+                    results["suggestions"].append(
+                        f"Convert to YAML: {filename.replace('.md', '.yml')}"
+                    )
+                    results["valid"] = False
+                else:
+                    results["conventions_applied"].append(
+                        "Gate naming convention applied"
+                    )
+
+            elif artefact_type == "qa_assessments":
+                # Assessments should follow: {epic_num}.{story_num}-{assessment_type}-{YYYYMMDD}.md
+                import re
+
+                if not re.search(r"\d{8}\.md$", filename):
+                    results["issues"].append(
+                        "Assessment files should include date in YYYYMMDD format"
+                    )
+                    from datetime import datetime
+
+                    date_str = datetime.now().strftime("%Y%m%d")
+                    base_name = filename.replace(".md", "")
+                    results["suggestions"].append(
+                        f"Add date: {base_name}-{date_str}.md"
+                    )
+                    results["valid"] = False
+                else:
+                    results["conventions_applied"].append(
+                        "Assessment naming convention applied"
+                    )
+
+            elif artefact_type == "epics":
+                # Epics should follow: epic-{epic_num}-{epic_title_short}.md
+                if not filename.startswith("epic-"):
+                    results["issues"].append("Epic files should start with 'epic-'")
+                    results["suggestions"].append(f"Rename to: epic-{filename}")
+                    results["valid"] = False
+                else:
+                    results["conventions_applied"].append(
+                        "Epic naming convention applied"
+                    )
+
+            # General conventions
+            if len(filename) > 100:
+                results["issues"].append("Filename too long (>100 characters)")
+                results["suggestions"].append(
+                    "Shorten filename to under 100 characters"
+                )
+
+            # Check for invalid characters
+            invalid_chars = ["<", ">", ":", '"', "|", "?", "*"]
+            if any(char in filename for char in invalid_chars):
+                results["issues"].append("Filename contains invalid characters")
+                results["suggestions"].append(
+                    'Remove special characters: < > : " | ? *'
+                )
+
+        except Exception as e:
+            results["valid"] = False
+            results["issues"].append(f"Naming validation error: {e}")
+
+        return results
+
+    def track_artefact_metadata(
+        self, artefact_type: str, filename: str, metadata: Dict[str, Any]
+    ):
+        """Track artefact metadata for version management and dependencies.
+
+        Args:
+            artefact_type: Type of artefact
+            filename: Artefact filename
+            metadata: Metadata to track
+        """
+        if artefact_type not in self.artefact_metadata:
+            self.artefact_metadata[artefact_type] = {}
+
+        self.artefact_metadata[artefact_type][filename] = {
+            "created": metadata.get("created", datetime.now().isoformat()),
+            "version": metadata.get("version", "1.0"),
+            "dependencies": metadata.get("dependencies", []),
+            "last_modified": datetime.now().isoformat(),
+            **metadata,
+        }
+
+        logger.debug(f"Tracked metadata for {artefact_type}/{filename}")
+
+    def get_artefact_dependencies(self, artefact_type: str, filename: str) -> list:
+        """Get dependencies for an artefact.
+
+        Args:
+            artefact_type: Type of artefact
+            filename: Artefact filename
+
+        Returns:
+            List of dependencies
+        """
+        try:
+            return (
+                self.artefact_metadata.get(artefact_type, {})
+                .get(filename, {})
+                .get("dependencies", [])
+            )
+        except Exception:
+            return []
+
+    def validate_artefact_consistency(
+        self, artefact_type: str, content: str, filename: str
+    ) -> Dict[str, Any]:
+        """Validate artefact consistency across the document set.
+
+        Args:
+            artefact_type: Type of artefact
+            content: Artefact content
+            filename: Artefact filename
+
+        Returns:
+            Dict with consistency validation results
+        """
+        results = {
+            "consistent": True,
+            "issues": [],
+            "cross_references": [],
+            "missing_references": [],
+        }
+
+        try:
+            # Type-specific consistency checks
+            if artefact_type == "stories":
+                # Check for required sections
+                required_sections = ["## Status:", "## Story", "## Acceptance Criteria"]
+                for section in required_sections:
+                    if section not in content:
+                        results["issues"].append(f"Missing required section: {section}")
+                        results["consistent"] = False
+
+                # Check cross-references to architecture
+                if "docs/architecture/" in content:
+                    results["cross_references"].append(
+                        "References architecture documents"
+                    )
+
+                # Check for referenced but potentially missing files
+                import re
+
+                refs = re.findall(r"docs/[^)]+", content)
+                for ref in refs:
+                    # This is a basic check - could be enhanced with actual file existence validation
+                    results["cross_references"].append(f"References: {ref}")
+
+            elif artefact_type == "qa_gates":
+                # Check for required gate fields
+                required_fields = ["schema:", "story:", "gate:"]
+                content_lower = content.lower()
+                for field in required_fields:
+                    if field not in content_lower:
+                        results["issues"].append(
+                            f"Missing required gate field: {field}"
+                        )
+                        results["consistent"] = False
+
+            # Track this artefact's metadata
+            self.track_artefact_metadata(
+                artefact_type,
+                filename,
+                {
+                    "content_length": len(content),
+                    "sections_count": content.count("##"),
+                    "references_count": len(results["cross_references"]),
+                },
+            )
+
+        except Exception as e:
+            results["consistent"] = False
+            results["issues"].append(f"Consistency validation error: {e}")
+
+        return results
 
     def validate_folder_structure(self) -> bool:
         """Ensure all required directories exist before writing artefacts.
@@ -409,7 +633,7 @@ class BMADArtefactWriter:
         return slug or "untitled"
 
     def write_artefact(self, artefact_type: str, content: str, **kwargs) -> bool:
-        """Write artefact to BMAD folder structure using FOLDER_MAPPING.
+        """Write artefact to BMAD folder structure using comprehensive validation and naming conventions.
 
         Args:
             artefact_type: Type of artefact ('prd', 'stories', 'qa_assessments', etc.)
@@ -425,6 +649,19 @@ class BMADArtefactWriter:
                 logger.error(f"Unknown artefact type: {artefact_type}")
                 return False
 
+            # Generate filename for validation
+            filename = self._generate_artefact_filename(artefact_type, **kwargs)
+
+            # Validate naming conventions
+            naming_validation = self.validate_artefact_naming_conventions(
+                artefact_type, filename
+            )
+            if not naming_validation["valid"]:
+                logger.warning(
+                    f"Naming convention issues for {artefact_type}/{filename}: {naming_validation['issues']}"
+                )
+                # Don't fail, just warn - let the write proceed
+
             # Validate content
             if not self._validate_artefact_content(artefact_type, content):
                 logger.error(
@@ -432,47 +669,178 @@ class BMADArtefactWriter:
                 )
                 return False
 
+            # Validate artefact consistency
+            consistency_validation = self.validate_artefact_consistency(
+                artefact_type, content, filename
+            )
+            if not consistency_validation["consistent"]:
+                logger.warning(
+                    f"Consistency issues for {artefact_type}/{filename}: {consistency_validation['issues']}"
+                )
+                # Don't fail, just warn - let the write proceed
+
             # Ensure folder structure exists
             if not self.validate_folder_structure():
                 logger.error("Failed to validate/ensure folder structure")
                 return False
 
-            # Handle different artefact types
-            if artefact_type == "prd":
-                return self.write_prd(content, kwargs.get("filename", "prd.md"))
-            elif artefact_type == "stories":
-                return self.write_story(
-                    content,
-                    kwargs.get("epic_num"),
-                    kwargs.get("story_num"),
-                    kwargs.get("story_title"),
+            # Handle different artefact types with enhanced error handling
+            success = self._write_artefact_by_type(
+                artefact_type, content, filename, **kwargs
+            )
+
+            if success:
+                # Track metadata on successful write
+                self.track_artefact_metadata(
+                    artefact_type,
+                    filename,
+                    {
+                        "naming_conventions": naming_validation["conventions_applied"],
+                        "consistency_check": consistency_validation["consistent"],
+                        "cross_references": consistency_validation["cross_references"],
+                        "content_hash": hash(content),  # Basic content tracking
+                    },
                 )
-            elif artefact_type == "qa_gates":
-                return self.write_quality_gate(
-                    content,
-                    kwargs.get("epic_num"),
-                    kwargs.get("story_num"),
-                    kwargs.get("story_slug"),
+
+                logger.info(
+                    f"Successfully wrote artefact {artefact_type}/{filename} with comprehensive validation"
                 )
-            elif artefact_type == "qa_assessments":
-                return self.write_assessment(
-                    content,
-                    kwargs.get("epic_num"),
-                    kwargs.get("story_num"),
-                    kwargs.get("assessment_type"),
-                )
-            elif artefact_type == "epics":
-                return self.write_epic(
-                    content, kwargs.get("epic_num"), kwargs.get("epic_title")
-                )
-            else:
-                logger.error(
-                    f"Artefact type {artefact_type} not implemented in write_artefact"
-                )
-                return False
+
+            return success
 
         except Exception as e:
             logger.error(f"Failed to write artefact {artefact_type}: {e}")
+            return False
+
+    def _generate_artefact_filename(self, artefact_type: str, **kwargs) -> str:
+        """Generate artefact filename based on type and parameters.
+
+        Args:
+            artefact_type: Type of artefact
+            **kwargs: Parameters for filename generation
+
+        Returns:
+            str: Generated filename
+        """
+        try:
+            if artefact_type == "stories":
+                epic_num = kwargs.get("epic_num", 1)
+                story_num = kwargs.get("story_num", 1)
+                story_title = kwargs.get("story_title", "untitled")
+                title_short = self._create_filename_slug(story_title)
+                return f"{epic_num}.{story_num}.{title_short}.story.md"
+
+            elif artefact_type == "qa_gates":
+                epic_num = kwargs.get("epic_num", 1)
+                story_num = kwargs.get("story_num", 1)
+                story_slug = kwargs.get("story_slug", "unknown")
+                return f"{epic_num}.{story_num}-{story_slug}.yml"
+
+            elif artefact_type == "qa_assessments":
+                epic_num = kwargs.get("epic_num", 1)
+                story_num = kwargs.get("story_num", 1)
+                assessment_type = kwargs.get("assessment_type", "unknown")
+                date_str = datetime.now().strftime("%Y%m%d")
+                return f"{epic_num}.{story_num}-{assessment_type}-{date_str}.md"
+
+            elif artefact_type == "epics":
+                epic_num = kwargs.get("epic_num", 1)
+                epic_title = kwargs.get("epic_title", "untitled")
+                title_short = self._create_filename_slug(epic_title)
+                return f"epic-{epic_num}-{title_short}.md"
+
+            elif artefact_type == "prd":
+                return kwargs.get("filename", "prd.md")
+
+            else:
+                # Generic filename for unsupported types
+                return f"{artefact_type}-{datetime.now().strftime('%Y%m%d')}.md"
+
+        except Exception as e:
+            logger.warning(f"Error generating filename for {artefact_type}: {e}")
+            return f"{artefact_type}-unknown.md"
+
+    def _write_artefact_by_type(
+        self, artefact_type: str, content: str, filename: str, **kwargs
+    ) -> bool:
+        """Write artefact based on its type with appropriate method calls.
+
+        Args:
+            artefact_type: Type of artefact
+            content: Artefact content
+            filename: Generated filename
+            **kwargs: Additional parameters
+
+        Returns:
+            bool: True if successful
+        """
+        try:
+            # Handle different artefact types
+            if artefact_type == "prd":
+                return self.write_prd(content, filename)
+            elif artefact_type == "stories":
+                # Extract parameters from filename for story writing
+                parts = filename.replace(".story.md", "").split(".")
+                if len(parts) >= 3:
+                    epic_num = int(parts[0])
+                    story_num = int(parts[1])
+                    story_title = ".".join(parts[2:])  # Reconstruct title
+                    return self.write_story(content, epic_num, story_num, story_title)
+                else:
+                    logger.error(f"Invalid story filename format: {filename}")
+                    return False
+            elif artefact_type == "qa_gates":
+                # Extract parameters from YAML filename
+                parts = filename.replace(".yml", "").split("-", 1)
+                if len(parts) >= 1:
+                    epic_story = parts[0].split(".")
+                    if len(epic_story) >= 2:
+                        epic_num = int(epic_story[0])
+                        story_num = int(epic_story[1])
+                        story_slug = parts[1] if len(parts) > 1 else "unknown"
+                        return self.write_quality_gate(
+                            content, epic_num, story_num, story_slug
+                        )
+                logger.error(f"Invalid gate filename format: {filename}")
+                return False
+            elif artefact_type == "qa_assessments":
+                # Extract parameters from assessment filename
+                parts = filename.replace(".md", "").split("-")
+                if len(parts) >= 3:
+                    epic_story = parts[0].split(".")
+                    if len(epic_story) >= 2:
+                        epic_num = int(epic_story[0])
+                        story_num = int(epic_story[1])
+                        assessment_type = parts[1]
+                        return self.write_assessment(
+                            content, epic_num, story_num, assessment_type
+                        )
+                logger.error(f"Invalid assessment filename format: {filename}")
+                return False
+            elif artefact_type == "epics":
+                # Extract parameters from epic filename
+                if filename.startswith("epic-"):
+                    parts = filename.replace(".md", "").split("-", 2)
+                    if len(parts) >= 3:
+                        epic_num = int(parts[1])
+                        epic_title = parts[2]
+                        return self.write_epic(content, epic_num, epic_title)
+                logger.error(f"Invalid epic filename format: {filename}")
+                return False
+            else:
+                # Generic file writing for unsupported types
+                base_path = self.base_path / self.FOLDER_MAPPING[artefact_type]
+                if str(base_path).endswith("/"):
+                    # Directory path
+                    full_path = base_path / filename
+                else:
+                    # File path
+                    full_path = base_path
+
+                return self._write_file(full_path, content)
+
+        except Exception as e:
+            logger.error(f"Error writing artefact by type {artefact_type}: {e}")
             return False
 
     def _validate_artefact_content(self, artefact_type: str, content) -> bool:

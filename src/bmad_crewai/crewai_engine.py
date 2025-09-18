@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from crewai import Agent, Crew, Process, Task
 
+from .artefact_manager import ArtefactManager
 from .exceptions import BmadCrewAIError
 from .workflow_state_manager import WorkflowStateManager
 
@@ -425,19 +426,22 @@ class BmadWorkflowEngine:
         self,
         crew: Optional[Crew] = None,
         state_manager: Optional["WorkflowStateManager"] = None,
+        artefact_manager: Optional[ArtefactManager] = None,
         logger: Optional[logging.Logger] = None,
     ):
         """
-        Initialize the BMAD Workflow Engine.
+        Initialize the BMAD Workflow Engine with comprehensive artefact generation.
 
         Args:
             crew: Optional CrewAI crew instance
             state_manager: Optional WorkflowStateManager instance
+            artefact_manager: Optional ArtefactManager instance for artefact generation
             logger: Optional logger instance
         """
         self.logger = logger or logging.getLogger(__name__)
         self.crew = crew
         self.state_manager = state_manager
+        self.artefact_manager = artefact_manager
 
         # Initialize state manager if not provided
         if not self.state_manager:
@@ -445,11 +449,17 @@ class BmadWorkflowEngine:
 
             self.state_manager = WorkflowStateManager(logger=self.logger)
 
+        # Initialize artefact manager if not provided
+        if not self.artefact_manager:
+            self.artefact_manager = ArtefactManager()
+
         # Threading support for concurrent operations
         self._active_workflows: Dict[str, Dict[str, Any]] = {}
         self._workflow_locks: Dict[str, threading.Lock] = {}
 
-        self.logger.info("BmadWorkflowEngine initialized with state management")
+        self.logger.info(
+            "BmadWorkflowEngine initialized with state management and artefact generation"
+        )
 
     def execute_workflow(
         self, workflow_template: Dict[str, Any], workflow_id: Optional[str] = None
@@ -727,6 +737,12 @@ class BmadWorkflowEngine:
                     }
                 )
 
+            # Generate artefacts if specified in task
+            artefact_result = self._generate_task_artefacts(
+                workflow_id, task_spec, task_result
+            )
+            task_result["artefacts_generated"] = artefact_result
+
             # Update steps completed
             state = self.state_manager.recover_state(workflow_id)
             if state:
@@ -746,6 +762,124 @@ class BmadWorkflowEngine:
                 task_result["recovery_options"] = recovery_info.get("options", [])
 
         return task_result
+
+    def _generate_task_artefacts(
+        self, workflow_id: str, task_spec: Dict[str, Any], task_result: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Generate artefacts for a completed task using comprehensive artefact generation.
+
+        Args:
+            workflow_id: Workflow identifier
+            task_spec: Task specification
+            task_result: Task execution result
+
+        Returns:
+            Dict[str, Any]: Artefact generation results
+        """
+        artefact_results = {"generated": [], "failed": [], "skipped": []}
+
+        try:
+            # Check if task specifies artefact generation
+            output_spec = task_spec.get("output", {})
+            if not output_spec:
+                artefact_results["skipped"].append("No output specification in task")
+                return artefact_results
+
+            # Extract artefact generation parameters
+            artefact_type = output_spec.get("artefact_type")
+            content_template = output_spec.get("content_template", "")
+            generation_params = output_spec.get("params", {})
+
+            if not artefact_type:
+                artefact_results["skipped"].append("No artefact type specified")
+                return artefact_results
+
+            # Generate content from task result if template uses placeholders
+            content = self._resolve_content_template(
+                content_template, task_result, workflow_id
+            )
+
+            # Use comprehensive artefact generation
+            context = {
+                "workflow_id": workflow_id,
+                "task_index": task_result.get("task_index"),
+                "agent": task_result.get("agent"),
+                "artefact_type": artefact_type,
+            }
+
+            success = self.artefact_manager.generate_comprehensive_artefact(
+                content=content,
+                artefact_type=artefact_type,
+                context=context,
+                **generation_params,
+            )
+
+            if success:
+                artefact_results["generated"].append(
+                    {
+                        "type": artefact_type,
+                        "workflow_id": workflow_id,
+                        "task_index": task_result.get("task_index"),
+                    }
+                )
+                self.logger.info(
+                    f"Successfully generated artefact {artefact_type} for workflow {workflow_id}"
+                )
+            else:
+                artefact_results["failed"].append(
+                    {"type": artefact_type, "reason": "Artefact generation failed"}
+                )
+                self.logger.error(
+                    f"Failed to generate artefact {artefact_type} for workflow {workflow_id}"
+                )
+
+        except Exception as e:
+            artefact_results["failed"].append(
+                {"type": artefact_type or "unknown", "reason": str(e)}
+            )
+            self.logger.error(f"Artefact generation error: {e}")
+
+        return artefact_results
+
+    def _resolve_content_template(
+        self, template: str, task_result: Dict[str, Any], workflow_id: str
+    ) -> str:
+        """
+        Resolve template placeholders with actual values from task execution.
+
+        Args:
+            template: Content template with placeholders
+            task_result: Task execution result
+            workflow_id: Workflow identifier
+
+        Returns:
+            str: Resolved content
+        """
+        try:
+            content = template
+
+            # Basic placeholder resolution
+            placeholders = {
+                "{{workflow_id}}": workflow_id,
+                "{{task_index}}": str(task_result.get("task_index", "")),
+                "{{agent}}": task_result.get("agent", ""),
+                "{{timestamp}}": datetime.now().isoformat(),
+                "{{status}}": task_result.get("status", ""),
+            }
+
+            for placeholder, value in placeholders.items():
+                content = content.replace(placeholder, str(value))
+
+            # Add task result message if present
+            if task_result.get("message"):
+                content = content.replace("{{task_message}}", task_result["message"])
+
+            return content
+
+        except Exception as e:
+            self.logger.warning(f"Template resolution failed: {e}")
+            return template  # Return original template if resolution fails
 
     def _get_previous_task_agent(
         self, workflow_id: str, prev_index: int

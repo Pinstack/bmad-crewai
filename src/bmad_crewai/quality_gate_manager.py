@@ -1,6 +1,7 @@
 """Quality gate and checklist management functionality."""
 
 import logging
+import os
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -309,6 +310,340 @@ class QualityGateManager:
         }
 
         return artefact_mapping.get(checklist_id, ["unknown"])
+
+    def validate_artefact_generation_quality(
+        self, artefact_type: str, content: str, context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Validate the quality of generated artefacts.
+
+        Args:
+            artefact_type: Type of artefact to validate
+            content: Artefact content to validate
+            context: Optional context information
+
+        Returns:
+            Dict with quality validation results
+        """
+        results = {
+            "artefact_type": artefact_type,
+            "quality_score": 0.0,
+            "issues": [],
+            "strengths": [],
+            "recommendations": [],
+            "validation_criteria": [],
+        }
+
+        try:
+            # Type-specific quality validation
+            if artefact_type == "stories":
+                results.update(self._validate_story_quality(content))
+            elif artefact_type == "qa_gates":
+                results.update(self._validate_gate_quality(content))
+            elif artefact_type == "qa_assessments":
+                results.update(self._validate_assessment_quality(content))
+            elif artefact_type == "epics":
+                results.update(self._validate_epic_quality(content))
+            elif artefact_type == "prd":
+                results.update(self._validate_prd_quality(content))
+            else:
+                results["issues"].append(f"Unknown artefact type: {artefact_type}")
+
+            # Calculate overall quality score
+            results["quality_score"] = self._calculate_artefact_quality_score(results)
+
+            # Generate recommendations based on issues
+            results["recommendations"] = self._generate_quality_recommendations(results)
+
+        except Exception as e:
+            results["issues"].append(f"Quality validation failed: {e}")
+            results["quality_score"] = 0.0
+
+        return results
+
+    def validate_artefact_consistency(
+        self,
+        artefact_type: str,
+        content: str,
+        related_artefacts: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Any]:
+        """Validate artefact consistency across the document set.
+
+        Args:
+            artefact_type: Type of artefact to validate
+            content: Artefact content to validate
+            related_artefacts: Dict of related artefact types and their content
+
+        Returns:
+            Dict with consistency validation results
+        """
+        results = {
+            "artefact_type": artefact_type,
+            "consistency_score": 1.0,  # Start with perfect consistency
+            "consistency_issues": [],
+            "cross_references": [],
+            "missing_links": [],
+            "recommendations": [],
+        }
+
+        try:
+            # Check for broken internal references
+            results.update(self._validate_internal_references(content))
+
+            # Validate cross-artefact consistency if related artefacts provided
+            if related_artefacts:
+                results.update(
+                    self._validate_cross_artefact_consistency(
+                        artefact_type, content, related_artefacts
+                    )
+                )
+
+            # Check naming conventions and file references
+            results.update(self._validate_reference_consistency(artefact_type, content))
+
+        except Exception as e:
+            results["consistency_issues"].append(f"Consistency validation failed: {e}")
+            results["consistency_score"] = 0.0
+
+        return results
+
+    def _validate_story_quality(self, content: str) -> Dict[str, Any]:
+        """Validate story artefact quality."""
+        issues = []
+        strengths = []
+        criteria = [
+            "has_status",
+            "has_story_statement",
+            "has_acceptance_criteria",
+            "proper_format",
+        ]
+
+        # Check required sections
+        if "## Status:" not in content:
+            issues.append("Missing Status section")
+        else:
+            strengths.append("Has proper status tracking")
+
+        if "## Story" not in content or "**As a**" not in content:
+            issues.append("Missing or malformed story statement")
+        else:
+            strengths.append("Has well-formed user story")
+
+        if "## Acceptance Criteria" not in content:
+            issues.append("Missing acceptance criteria")
+        else:
+            strengths.append("Has acceptance criteria defined")
+
+        # Check for proper markdown formatting
+        if not content.strip().startswith("# "):
+            issues.append("Does not start with proper markdown header")
+        else:
+            strengths.append("Proper markdown formatting")
+
+        return {
+            "issues": issues,
+            "strengths": strengths,
+            "validation_criteria": criteria,
+        }
+
+    def _validate_gate_quality(self, content: str) -> Dict[str, Any]:
+        """Validate quality gate artefact quality."""
+        issues = []
+        strengths = []
+        criteria = ["has_schema", "has_decision", "has_rationale", "proper_yaml"]
+
+        # Check for required YAML fields
+        if "schema:" not in content.lower():
+            issues.append("Missing schema field")
+        else:
+            strengths.append("Has schema definition")
+
+        if "gate:" not in content.lower():
+            issues.append("Missing gate decision")
+        else:
+            strengths.append("Has gate decision")
+
+        if "reviewer:" not in content.lower():
+            issues.append("Missing reviewer information")
+        else:
+            strengths.append("Has reviewer attribution")
+
+        return {
+            "issues": issues,
+            "strengths": strengths,
+            "validation_criteria": criteria,
+        }
+
+    def _validate_assessment_quality(self, content: str) -> Dict[str, Any]:
+        """Validate assessment artefact quality."""
+        issues = []
+        strengths = []
+        criteria = ["has_structure", "has_findings", "has_date", "proper_format"]
+
+        # Check for basic structure
+        if not ("#" in content and "##" in content):
+            issues.append("Missing proper heading structure")
+        else:
+            strengths.append("Has proper heading structure")
+
+        # Check for date in filename or content
+        has_date = any(
+            indicator in content.lower()
+            for indicator in ["date:", "updated:", "2024", "2025"]
+        )
+        if not has_date:
+            issues.append("Missing date information")
+        else:
+            strengths.append("Has date tracking")
+
+        return {
+            "issues": issues,
+            "strengths": strengths,
+            "validation_criteria": criteria,
+        }
+
+    def _validate_epic_quality(self, content: str) -> Dict[str, Any]:
+        """Validate epic artefact quality."""
+        issues = []
+        strengths = []
+        criteria = ["has_goal", "has_stories", "has_acceptance", "proper_format"]
+
+        if "## Epic Goal" not in content and "**Epic Goal**" not in content:
+            issues.append("Missing epic goal statement")
+        else:
+            strengths.append("Has clear epic goal")
+
+        if "## Story" not in content:
+            issues.append("Missing story definitions")
+        else:
+            strengths.append("Has story breakdown")
+
+        return {
+            "issues": issues,
+            "strengths": strengths,
+            "validation_criteria": criteria,
+        }
+
+    def _validate_prd_quality(self, content: str) -> Dict[str, Any]:
+        """Validate PRD artefact quality."""
+        issues = []
+        strengths = []
+        criteria = [
+            "has_overview",
+            "has_requirements",
+            "has_acceptance",
+            "proper_format",
+        ]
+
+        # Basic PRD checks
+        if len(content) < 500:  # Very basic length check
+            issues.append("PRD content appears too brief")
+        else:
+            strengths.append("Has substantial content")
+
+        if "## " not in content:
+            issues.append("Missing section structure")
+        else:
+            strengths.append("Has proper section structure")
+
+        return {
+            "issues": issues,
+            "strengths": strengths,
+            "validation_criteria": criteria,
+        }
+
+    def _calculate_artefact_quality_score(
+        self, validation_results: Dict[str, Any]
+    ) -> float:
+        """Calculate overall quality score from validation results."""
+        issues = validation_results.get("issues", [])
+        strengths = validation_results.get("strengths", [])
+        criteria = validation_results.get("validation_criteria", [])
+
+        if not criteria:
+            return 0.0
+
+        # Base score from criteria met
+        criteria_met = len(strengths)
+        total_criteria = len(criteria)
+        base_score = criteria_met / total_criteria if total_criteria > 0 else 0
+
+        # Penalty for issues
+        issue_penalty = len(issues) * 0.1  # 10% penalty per issue
+        final_score = max(0.0, min(1.0, base_score - issue_penalty))
+
+        return final_score
+
+    def _generate_quality_recommendations(
+        self, validation_results: Dict[str, Any]
+    ) -> List[str]:
+        """Generate quality improvement recommendations."""
+        recommendations = []
+        issues = validation_results.get("issues", [])
+
+        for issue in issues:
+            if "missing" in issue.lower():
+                recommendations.append(
+                    f"Add {issue.lower().replace('missing', '').strip()}"
+                )
+            elif "malformed" in issue.lower():
+                recommendations.append(
+                    f"Fix formatting of {issue.lower().replace('malformed', '').strip()}"
+                )
+            else:
+                recommendations.append(f"Address: {issue}")
+
+        return recommendations
+
+    def _validate_internal_references(self, content: str) -> Dict[str, Any]:
+        """Validate internal references within artefact."""
+        results = {"consistency_issues": [], "cross_references": []}
+
+        # Check for broken markdown links
+        import re
+
+        links = re.findall(r"\[([^\]]+)\]\(([^)]+)\)", content)
+
+        for link_text, link_target in links:
+            results["cross_references"].append(f"Link: {link_text} -> {link_target}")
+
+            # Basic validation - could be enhanced with actual file existence checks
+            if link_target.startswith("docs/") and not os.path.exists(link_target):
+                results["consistency_issues"].append(
+                    f"Potentially broken link: {link_target}"
+                )
+
+        return results
+
+    def _validate_cross_artefact_consistency(
+        self, artefact_type: str, content: str, related_artefacts: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """Validate consistency between related artefacts."""
+        results = {"consistency_issues": []}
+
+        # Example: Check if story references exist in related epic
+        if artefact_type == "stories" and "epics" in related_artefacts:
+            epic_content = related_artefacts["epics"]
+            # Simple check - story should reference its epic
+            if "epic" not in content.lower():
+                results["consistency_issues"].append(
+                    "Story does not reference its parent epic"
+                )
+
+        return results
+
+    def _validate_reference_consistency(
+        self, artefact_type: str, content: str
+    ) -> Dict[str, Any]:
+        """Validate reference consistency within artefact type."""
+        results = {"consistency_issues": []}
+
+        # Check for consistent naming patterns
+        if artefact_type == "stories":
+            # Stories should follow naming conventions
+            if not (content.startswith("# Story") or "## Story" in content):
+                results["consistency_issues"].append("Inconsistent story header format")
+
+        return results
 
     def test_quality_gates(self) -> Dict[str, Any]:
         """Test quality gate and checklist execution framework.
