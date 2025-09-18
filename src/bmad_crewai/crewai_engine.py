@@ -6,6 +6,8 @@ It manages CrewAI crews, workflows, and agent coordination.
 """
 
 import logging
+import threading
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from crewai import Agent, Crew, Process, Task
@@ -408,3 +410,488 @@ class CrewAIOrchestrationEngine:
         except Exception as e:
             self.logger.error(f"Failed to reset engine: {e}")
             return False
+
+
+class BmadWorkflowEngine:
+    """
+    Enhanced workflow engine with state management integration for BMAD framework.
+
+    Manages workflow execution with state persistence, checkpoints, and recovery
+    capabilities for complex agent interactions and interruptions.
+    """
+
+    def __init__(self, crew: Optional[Crew] = None, state_manager: Optional['WorkflowStateManager'] = None,
+                 logger: Optional[logging.Logger] = None):
+        """
+        Initialize the BMAD Workflow Engine.
+
+        Args:
+            crew: Optional CrewAI crew instance
+            state_manager: Optional WorkflowStateManager instance
+            logger: Optional logger instance
+        """
+        self.logger = logger or logging.getLogger(__name__)
+        self.crew = crew
+        self.state_manager = state_manager
+
+        # Initialize state manager if not provided
+        if not self.state_manager:
+            from .workflow_state_manager import WorkflowStateManager
+            self.state_manager = WorkflowStateManager(logger=self.logger)
+
+        # Threading support for concurrent operations
+        self._active_workflows: Dict[str, Dict[str, Any]] = {}
+        self._workflow_locks: Dict[str, threading.Lock] = {}
+
+        self.logger.info("BmadWorkflowEngine initialized with state management")
+
+    def execute_workflow(self, workflow_template: Dict[str, Any], workflow_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Execute a workflow with state management integration.
+
+        Args:
+            workflow_template: Workflow specification dictionary
+            workflow_id: Optional workflow identifier (auto-generated if not provided)
+
+        Returns:
+            Dict[str, Any]: Workflow execution results
+        """
+        if not workflow_id:
+            workflow_id = f"workflow_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        # Initialize workflow lock
+        self._workflow_locks[workflow_id] = threading.Lock()
+
+        with self._workflow_locks[workflow_id]:
+            try:
+                # Initialize workflow state
+                initial_state = self._create_initial_workflow_state(workflow_template, workflow_id)
+                success = self.state_manager.persist_state(workflow_id, initial_state)
+
+                if not success:
+                    raise BmadCrewAIError(f"Failed to initialize workflow state for {workflow_id}")
+
+                self._active_workflows[workflow_id] = {
+                    "template": workflow_template,
+                    "start_time": datetime.now(),
+                    "status": "running"
+                }
+
+                # Execute workflow with state checkpoints
+                result = self._execute_with_state_checkpoints(workflow_id, workflow_template)
+
+                # Update final state
+                final_state = self.state_manager.recover_state(workflow_id) or {}
+                final_state["status"] = "completed" if result.get("status") == "success" else "failed"
+                final_state["end_time"] = datetime.now().isoformat()
+                final_state["result"] = result
+
+                self.state_manager.persist_state(workflow_id, final_state)
+
+                # Cleanup active workflow tracking
+                if workflow_id in self._active_workflows:
+                    del self._active_workflows[workflow_id]
+
+                return result
+
+            except Exception as e:
+                error_msg = f"Workflow execution failed for {workflow_id}: {e}"
+                self.logger.error(error_msg)
+
+                # Mark workflow as interrupted
+                self.state_manager.mark_workflow_interrupted(workflow_id, str(e))
+
+                return {
+                    "status": "error",
+                    "error": str(e),
+                    "workflow_id": workflow_id,
+                    "timestamp": datetime.now().isoformat()
+                }
+
+    def _create_initial_workflow_state(self, workflow_template: Dict[str, Any], workflow_id: str) -> Dict[str, Any]:
+        """
+        Create initial workflow state from template.
+
+        Args:
+            workflow_template: Workflow specification
+            workflow_id: Workflow identifier
+
+        Returns:
+            Dict[str, Any]: Initial state dictionary
+        """
+        tasks = workflow_template.get("tasks", [])
+        return {
+            "status": "initialized",
+            "current_step": "initialization",
+            "steps_completed": [],
+            "total_steps": len(tasks),
+            "workflow_template": workflow_template,
+            "agent_handoffs": [],
+            "agent_dependencies": {},
+            "execution_timeline": [{
+                "type": "initialization",
+                "timestamp": datetime.now().isoformat(),
+                "description": f"Workflow {workflow_id} initialized"
+            }],
+            "progress": {
+                "completed": 0,
+                "total": len(tasks),
+                "percentage": 0.0
+            },
+            "checkpoints": [],
+            "_metadata": {
+                "workflow_id": workflow_id,
+                "created": datetime.now().isoformat(),
+                "version": "1.0"
+            }
+        }
+
+    def _execute_with_state_checkpoints(self, workflow_id: str, workflow_template: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute workflow with state checkpoints and recovery support.
+
+        Args:
+            workflow_id: Workflow identifier
+            workflow_template: Workflow specification
+
+        Returns:
+            Dict[str, Any]: Execution results
+        """
+        results = {
+            "status": "running",
+            "workflow_id": workflow_id,
+            "task_results": [],
+            "checkpoints": []
+        }
+
+        try:
+            tasks = workflow_template.get("tasks", [])
+
+            for i, task_spec in enumerate(tasks):
+                # Create checkpoint before task execution
+                checkpoint_id = f"checkpoint_{i}"
+                self._create_checkpoint(workflow_id, checkpoint_id, task_spec)
+
+                # Update current step in state
+                state = self.state_manager.recover_state(workflow_id)
+                if state:
+                    state["current_step"] = f"task_{i}: {task_spec.get('description', 'unknown')}"
+                    self.state_manager.persist_state(workflow_id, state)
+
+                # Execute task
+                task_result = self._execute_task_with_agent_handling(workflow_id, task_spec, i)
+
+                # Record result
+                results["task_results"].append(task_result)
+
+                # Update progress
+                self._update_workflow_progress(workflow_id, i + 1, len(tasks))
+
+                # Check for interruption or failure
+                if task_result.get("status") == "failed":
+                    results["status"] = "failed"
+                    results["failed_at"] = i
+                    break
+
+            # Mark as completed if all tasks succeeded
+            if results["status"] == "running":
+                results["status"] = "success"
+
+        except Exception as e:
+            results["status"] = "error"
+            results["error"] = str(e)
+            self.logger.error(f"Workflow execution error: {e}")
+
+        return results
+
+    def _create_checkpoint(self, workflow_id: str, checkpoint_id: str, task_spec: Dict[str, Any]) -> None:
+        """
+        Create a workflow checkpoint before task execution.
+
+        Args:
+            workflow_id: Workflow identifier
+            checkpoint_id: Checkpoint identifier
+            task_spec: Task specification
+        """
+        try:
+            state = self.state_manager.recover_state(workflow_id)
+            if not state:
+                return
+
+            checkpoint = {
+                "id": checkpoint_id,
+                "timestamp": datetime.now().isoformat(),
+                "task_spec": task_spec,
+                "state_snapshot": state.copy()
+            }
+
+            if "checkpoints" not in state:
+                state["checkpoints"] = []
+
+            state["checkpoints"].append(checkpoint)
+            self.state_manager.persist_state(workflow_id, state)
+
+        except Exception as e:
+            self.logger.error(f"Failed to create checkpoint {checkpoint_id}: {e}")
+
+    def _execute_task_with_agent_handling(self, workflow_id: str, task_spec: Dict[str, Any], task_index: int) -> Dict[str, Any]:
+        """
+        Execute a task with agent handoff handling and state tracking.
+
+        Args:
+            workflow_id: Workflow identifier
+            task_spec: Task specification
+            task_index: Task index in workflow
+
+        Returns:
+            Dict[str, Any]: Task execution result
+        """
+        agent_id = task_spec.get("agent")
+        task_result = {
+            "task_index": task_index,
+            "agent": agent_id,
+            "status": "pending",
+            "timestamp": datetime.now().isoformat()
+        }
+
+        try:
+            # Validate agent handoff if this follows another task
+            if task_index > 0:
+                prev_task = self._get_previous_task_agent(workflow_id, task_index - 1)
+                if prev_task and agent_id and prev_task != agent_id:
+                    # Validate handoff
+                    validation = self.state_manager.validate_agent_handoff(workflow_id, prev_task, agent_id)
+                    if not validation.get("is_valid", True):
+                        task_result.update({
+                            "status": "failed",
+                            "error": "Agent handoff validation failed",
+                            "validation": validation
+                        })
+                        return task_result
+
+                    # Track the handoff
+                    self.state_manager.track_agent_handoff(workflow_id, prev_task, agent_id, {
+                        "task_index": task_index,
+                        "from_task": task_index - 1
+                    })
+
+            # Execute the task (simplified for now - would integrate with actual CrewAI execution)
+            if self.crew and agent_id:
+                # In real implementation, this would execute the actual CrewAI task
+                task_result.update({
+                    "status": "success",
+                    "message": f"Task executed by agent {agent_id}",
+                    "simulated": True  # Remove when real execution is implemented
+                })
+            else:
+                # Fallback for testing/development
+                task_result.update({
+                    "status": "success",
+                    "message": f"Task simulated for agent {agent_id}",
+                    "simulated": True
+                })
+
+            # Update steps completed
+            state = self.state_manager.recover_state(workflow_id)
+            if state:
+                if "steps_completed" not in state:
+                    state["steps_completed"] = []
+                state["steps_completed"].append(task_index)
+                self.state_manager.persist_state(workflow_id, state)
+
+        except Exception as e:
+            task_result.update({
+                "status": "failed",
+                "error": str(e)
+            })
+
+            # Handle agent failure recovery
+            recovery_info = self.state_manager.recover_from_agent_failure(workflow_id, agent_id or "unknown")
+            if recovery_info:
+                task_result["recovery_options"] = recovery_info.get("options", [])
+
+        return task_result
+
+    def _get_previous_task_agent(self, workflow_id: str, prev_index: int) -> Optional[str]:
+        """
+        Get the agent that executed the previous task.
+
+        Args:
+            workflow_id: Workflow identifier
+            prev_index: Previous task index
+
+        Returns:
+            Optional[str]: Previous agent ID or None
+        """
+        try:
+            state = self.state_manager.recover_state(workflow_id)
+            if not state:
+                return None
+
+            tasks = state.get("workflow_template", {}).get("tasks", [])
+            if prev_index < len(tasks):
+                return tasks[prev_index].get("agent")
+
+        except Exception as e:
+            self.logger.error(f"Failed to get previous task agent: {e}")
+
+        return None
+
+    def _update_workflow_progress(self, workflow_id: str, completed: int, total: int) -> None:
+        """
+        Update workflow progress metrics.
+
+        Args:
+            workflow_id: Workflow identifier
+            completed: Number of completed tasks
+            total: Total number of tasks
+        """
+        try:
+            state = self.state_manager.recover_state(workflow_id)
+            if state:
+                percentage = (completed / total * 100) if total > 0 else 0
+                state["progress"] = {
+                    "completed": completed,
+                    "total": total,
+                    "percentage": round(percentage, 2),
+                    "last_updated": datetime.now().isoformat()
+                }
+                self.state_manager.persist_state(workflow_id, state)
+
+        except Exception as e:
+            self.logger.error(f"Failed to update workflow progress: {e}")
+
+    def recover_workflow_from_checkpoint(self, workflow_id: str, checkpoint_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Recover workflow execution from a checkpoint.
+
+        Args:
+            checkpoint_id: Optional specific checkpoint ID, uses last if not provided
+
+        Returns:
+            Optional[Dict[str, Any]]: Recovery result or None
+        """
+        try:
+            state = self.state_manager.recover_state(workflow_id)
+            if not state:
+                return None
+
+            checkpoints = state.get("checkpoints", [])
+            if not checkpoints:
+                return None
+
+            # Use last checkpoint if none specified
+            if not checkpoint_id:
+                checkpoint = checkpoints[-1]
+            else:
+                checkpoint = next((cp for cp in checkpoints if cp["id"] == checkpoint_id), None)
+
+            if not checkpoint:
+                return None
+
+            # Restore state from checkpoint
+            restored_state = checkpoint["state_snapshot"].copy()
+            restored_state["status"] = "running"
+            restored_state["recovery_checkpoint"] = checkpoint_id
+            restored_state["recovery_time"] = datetime.now().isoformat()
+
+            success = self.state_manager.persist_state(workflow_id, restored_state)
+
+            if success:
+                return {
+                    "status": "recovered",
+                    "checkpoint_id": checkpoint["id"],
+                    "restored_state": restored_state
+                }
+
+        except Exception as e:
+            self.logger.error(f"Failed to recover from checkpoint: {e}")
+
+        return None
+
+    def get_workflow_status(self, workflow_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get comprehensive workflow status including state information.
+
+        Args:
+            workflow_id: Workflow identifier
+
+        Returns:
+            Optional[Dict[str, Any]]: Workflow status or None
+        """
+        try:
+            # Get state information
+            state = self.state_manager.recover_state(workflow_id)
+            if not state:
+                return None
+
+            # Get progress information
+            progress = self.state_manager.get_workflow_progress(workflow_id)
+
+            # Combine with active workflow info
+            active_info = self._active_workflows.get(workflow_id, {})
+
+            return {
+                "workflow_id": workflow_id,
+                "state": state,
+                "progress": progress,
+                "active_info": active_info,
+                "last_updated": datetime.now().isoformat()
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to get workflow status: {e}")
+            return None
+
+    def pause_workflow(self, workflow_id: str) -> bool:
+        """
+        Pause a running workflow.
+
+        Args:
+            workflow_id: Workflow identifier
+
+        Returns:
+            bool: True if paused successfully
+        """
+        try:
+            state = self.state_manager.recover_state(workflow_id)
+            if state and state.get("status") == "running":
+                state["status"] = "paused"
+                state["paused_at"] = datetime.now().isoformat()
+                return self.state_manager.persist_state(workflow_id, state)
+
+        except Exception as e:
+            self.logger.error(f"Failed to pause workflow {workflow_id}: {e}")
+
+        return False
+
+    def resume_workflow(self, workflow_id: str) -> bool:
+        """
+        Resume a paused workflow.
+
+        Args:
+            workflow_id: Workflow identifier
+
+        Returns:
+            bool: True if resumed successfully
+        """
+        try:
+            state = self.state_manager.recover_state(workflow_id)
+            if state and state.get("status") == "paused":
+                state["status"] = "running"
+                state["resumed_at"] = datetime.now().isoformat()
+
+                # Add timeline entry
+                timeline_entry = {
+                    "type": "resume",
+                    "timestamp": state["resumed_at"],
+                    "description": "Workflow resumed from pause"
+                }
+                state["execution_timeline"].append(timeline_entry)
+
+                return self.state_manager.persist_state(workflow_id, state)
+
+        except Exception as e:
+            self.logger.error(f"Failed to resume workflow {workflow_id}: {e}")
+
+        return False

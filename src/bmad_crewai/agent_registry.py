@@ -1,7 +1,7 @@
 """BMAD agent registration and management."""
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from crewai import Agent, Crew
 
@@ -377,3 +377,206 @@ class AgentRegistry:
                 self.logger.error(f"Agent coordination test failed: {e}")
 
         return results
+
+    def track_agent_handoff(self, workflow_id: str, from_agent: str, to_agent: str,
+                          handoff_data: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Track agent handoffs for workflow state management.
+
+        Args:
+            workflow_id: Workflow identifier
+            from_agent: Agent handing off
+            to_agent: Agent receiving handoff
+            handoff_data: Optional data associated with handoff
+
+        Returns:
+            bool: True if tracking successful, False otherwise
+        """
+        try:
+            # This method serves as a bridge to WorkflowStateManager
+            # In a full implementation, this would delegate to the state manager
+            # For now, we'll log the handoff for future integration
+
+            handoff_record = {
+                "workflow_id": workflow_id,
+                "from_agent": from_agent,
+                "to_agent": to_agent,
+                "timestamp": logger.info(f"Agent handoff tracked: {from_agent} → {to_agent} in workflow {workflow_id}"),
+                "data": handoff_data or {}
+            }
+
+            # Store handoff in agent metadata for now
+            # In full implementation, this would be handled by WorkflowStateManager
+            if not hasattr(self, '_agent_handoffs'):
+                self._agent_handoffs = []
+
+            self._agent_handoffs.append(handoff_record)
+
+            self.logger.info(
+                f"Agent handoff tracked: {from_agent} → {to_agent} in workflow {workflow_id}"
+            )
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to track agent handoff: {e}")
+            return False
+
+    def get_agent_handoffs(self, workflow_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Get agent handoff records, optionally filtered by workflow.
+
+        Args:
+            workflow_id: Optional workflow ID to filter by
+
+        Returns:
+            List[Dict[str, Any]]: List of handoff records
+        """
+        try:
+            handoffs = getattr(self, '_agent_handoffs', [])
+
+            if workflow_id:
+                handoffs = [h for h in handoffs if h.get("workflow_id") == workflow_id]
+
+            return handoffs
+
+        except Exception as e:
+            self.logger.error(f"Failed to get agent handoffs: {e}")
+            return []
+
+    def get_agent_dependencies(self, workflow_id: Optional[str] = None) -> Dict[str, List[str]]:
+        """
+        Get agent dependency mapping from handoffs.
+
+        Args:
+            workflow_id: Optional workflow ID to filter by
+
+        Returns:
+            Dict[str, List[str]]: Agent dependency mapping
+        """
+        try:
+            dependencies = {}
+            handoffs = self.get_agent_handoffs(workflow_id)
+
+            for handoff in handoffs:
+                from_agent = handoff.get("from_agent")
+                to_agent = handoff.get("to_agent")
+
+                if from_agent and to_agent:
+                    if from_agent not in dependencies:
+                        dependencies[from_agent] = []
+
+                    if to_agent not in dependencies[from_agent]:
+                        dependencies[from_agent].append(to_agent)
+
+            return dependencies
+
+        except Exception as e:
+            self.logger.error(f"Failed to get agent dependencies: {e}")
+            return {}
+
+    def validate_agent_handoff(self, from_agent: str, to_agent: str,
+                             workflow_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Validate an agent handoff before execution.
+
+        Args:
+            from_agent: Agent handing off
+            to_agent: Agent receiving handoff
+            workflow_context: Optional workflow context information
+
+        Returns:
+            Dict[str, Any]: Validation result with status and details
+        """
+        validation_result = {
+            "is_valid": True,
+            "warnings": [],
+            "errors": [],
+            "recommendations": []
+        }
+
+        try:
+            # Check if agents exist
+            if from_agent not in self.bmad_agents:
+                validation_result["is_valid"] = False
+                validation_result["errors"].append(f"Source agent '{from_agent}' not registered")
+
+            if to_agent not in self.bmad_agents:
+                validation_result["is_valid"] = False
+                validation_result["errors"].append(f"Target agent '{to_agent}' not registered")
+
+            if not validation_result["is_valid"]:
+                return validation_result
+
+            # Check agent capabilities for handoff
+            from_agent_obj = self.bmad_agents[from_agent]
+            to_agent_obj = self.bmad_agents[to_agent]
+
+            # Validate agent roles are compatible for handoff
+            compatible_handoffs = {
+                "scrum-master": ["product-owner", "dev-agent", "qa-agent"],
+                "product-owner": ["product-manager", "architect", "scrum-master"],
+                "product-manager": ["architect", "product-owner"],
+                "architect": ["dev-agent", "qa-agent", "product-manager"],
+                "dev-agent": ["qa-agent", "architect", "scrum-master"],
+                "qa-agent": ["dev-agent", "architect", "product-owner"]
+            }
+
+            if from_agent in compatible_handoffs:
+                if to_agent not in compatible_handoffs[from_agent]:
+                    validation_result["warnings"].append(
+                        f"Unusual handoff: {from_agent} → {to_agent} (not in standard workflow)"
+                    )
+
+            # Check for circular dependencies in recent handoffs
+            recent_handoffs = self.get_agent_handoffs()[-10:]  # Last 10 handoffs
+
+            # Simple circular dependency check
+            for handoff in recent_handoffs:
+                if (handoff.get("from_agent") == to_agent and
+                    handoff.get("to_agent") == from_agent):
+                    validation_result["warnings"].append(
+                        f"Potential circular dependency detected: {from_agent} ↔ {to_agent}"
+                    )
+                    break
+
+            # Check workflow context if provided
+            if workflow_context:
+                current_step = workflow_context.get("current_step", "")
+                workflow_status = workflow_context.get("status", "")
+
+                if workflow_status not in ["running", "initialized"]:
+                    validation_result["warnings"].append(
+                        f"Workflow status is {workflow_status}, handoff may not be appropriate"
+                    )
+
+        except Exception as e:
+            validation_result["is_valid"] = False
+            validation_result["errors"].append(f"Validation error: {str(e)}")
+
+        return validation_result
+
+    def get_agent_handoff_history(self, agent_id: str, workflow_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Get handoff history for a specific agent.
+
+        Args:
+            agent_id: Agent identifier
+            workflow_id: Optional workflow ID to filter by
+
+        Returns:
+            List[Dict[str, Any]]: Handoff history for the agent
+        """
+        try:
+            all_handoffs = self.get_agent_handoffs(workflow_id)
+
+            # Filter handoffs involving this agent
+            agent_handoffs = []
+            for handoff in all_handoffs:
+                if handoff.get("from_agent") == agent_id or handoff.get("to_agent") == agent_id:
+                    agent_handoffs.append(handoff)
+
+            return agent_handoffs
+
+        except Exception as e:
+            self.logger.error(f"Failed to get agent handoff history: {e}")
+            return []
