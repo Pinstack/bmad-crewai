@@ -24,6 +24,8 @@ class APIConfig:
     max_retries: int = 3
     rate_limit_requests: int = 100
     rate_limit_window: int = 60  # seconds
+    model: Optional[str] = None  # AI model to use
+    fallback_model: Optional[str] = None  # Fallback AI model
 
 
 @dataclass
@@ -187,6 +189,20 @@ class ConfigManager:
             if key.startswith("API_") and "_KEY" in key:
                 provider = key.replace("API_", "").replace("_KEY", "").lower()
                 config["apis"][provider] = {"provider": provider, "api_key": value}
+
+        # OpenRouter specific configuration
+        if "OPENROUTER_API_KEY" in os.environ:
+            config["apis"]["openrouter"] = {
+                "provider": "openrouter",
+                "api_key": os.environ["OPENROUTER_API_KEY"],
+                "base_url": "https://openrouter.ai/api/v1",
+                "model": os.environ.get(
+                    "OPENROUTER_MODEL", "openrouter/sonoma-sky-alpha"
+                ),
+                "fallback_model": os.environ.get(
+                    "OPENROUTER_FALLBACK_MODEL", "openrouter/sonoma-dusk-alpha"
+                ),
+            }
 
         # Logging
         if "LOG_LEVEL" in os.environ:

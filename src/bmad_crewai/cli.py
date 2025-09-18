@@ -13,7 +13,7 @@ from .api_client import RateLimitInfo
 from .artefact_writer import BMADArtefactWriter
 from .config import ConfigManager
 from .core import BmadCrewAI
-from .crewai_engine import CrewAIEngine
+from .crewai_engine import CrewAIOrchestrationEngine as CrewAIEngine
 from .exceptions import BmadCrewAIError
 from .quality_gate_manager import QualityGateManager
 from .workflow_manager import WorkflowStateTracker, WorkflowStatus

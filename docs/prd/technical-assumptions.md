@@ -28,3 +28,10 @@ Comprehensive testing strategy combining unit tests for individual components wi
 - Real-time quality monitoring during artefact generation
 - Automated feedback loops for quality improvement
 - Integration with BMAD's PASS/CONCERNS/FAIL decision framework
+
+### AI Model and Provider Support
+- Primary support for OpenRouter API with free models (sonoma-sky-alpha, sonoma-dusk-alpha)
+- Fallback support for OpenAI GPT models when OpenRouter unavailable
+- Environment-based configuration for API keys and model selection
+- Automatic model failover to ensure system reliability
+- Cost optimization through free OpenRouter models with paid fallback

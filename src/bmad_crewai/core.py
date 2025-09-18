@@ -42,7 +42,21 @@ class BmadCrewAI:
         self.templates: Dict[str, TemplateInfo] = {}
 
         # Initialize managers
-        self.agent_registry = AgentRegistry()
+        # Get OpenRouter config for agent registry
+        openrouter_config = self.config_manager.get_api_config("openrouter")
+        agent_registry_config = None
+        if openrouter_config.api_key:
+            agent_registry_config = {
+                "provider": "openrouter",
+                "api_key": openrouter_config.api_key,
+                "model": openrouter_config.model,
+                "base_url": openrouter_config.base_url,
+                "openai_api_key": self.config_manager.get_api_key(
+                    "openai"
+                ),  # For fallback
+            }
+
+        self.agent_registry = AgentRegistry(model_config=agent_registry_config)
         self.artefact_manager = ArtefactManager()
         self.development_tester = DevelopmentTester()
         self.quality_gate_manager = QualityGateManager()

@@ -11,10 +11,11 @@ logger = logging.getLogger(__name__)
 class AgentRegistry:
     """Registry for managing BMAD agents."""
 
-    def __init__(self):
+    def __init__(self, model_config: Optional[Dict[str, Any]] = None):
         self.bmad_agents: Dict[str, Agent] = {}
         self.crew: Optional[Crew] = None
         self.logger = logging.getLogger(__name__)
+        self.model_config = model_config or {}
 
     def register_bmad_agents(self) -> bool:
         """Register all BMAD agents with CrewAI.
@@ -71,13 +72,24 @@ class AgentRegistry:
         # Register each agent
         for agent_id, config in agent_configs.items():
             try:
-                agent = Agent(
-                    role=config["role"],
-                    goal=config["goal"],
-                    backstory=config["backstory"],
-                    allow_delegation=False,  # BMAD agents work independently
-                    verbose=False,  # Reduce verbosity for testing
-                )
+                # Configure LLM based on available model settings
+                agent_kwargs = {
+                    "role": config["role"],
+                    "goal": config["goal"],
+                    "backstory": config["backstory"],
+                    "allow_delegation": False,  # BMAD agents work independently
+                    "verbose": False,  # Reduce verbosity for testing
+                }
+
+                # Add LLM configuration if available
+                if self.model_config:
+                    from crewai import LLM
+
+                    llm = self._create_llm_config()
+                    if llm:
+                        agent_kwargs["llm"] = llm
+
+                agent = Agent(**agent_kwargs)
 
                 self.bmad_agents[agent_id] = agent
                 self.logger.info(
@@ -103,6 +115,58 @@ class AgentRegistry:
 
         self.logger.info(f"Successfully registered {len(self.bmad_agents)} BMAD agents")
         return True
+
+    def _create_llm_config(self) -> Optional["LLM"]:
+        """
+        Create LLM configuration with fallback support.
+
+        Returns:
+            LLM instance or None if no valid configuration found
+        """
+        try:
+            from crewai import LLM
+
+            # Try OpenRouter first (primary)
+            if self.model_config.get("provider") == "openrouter":
+                api_key = self.model_config.get("api_key")
+                model = self.model_config.get("model")
+                base_url = self.model_config.get("base_url")
+
+                if api_key and model and base_url:
+                    try:
+                        return LLM(
+                            model=model,
+                            api_key=api_key,
+                            base_url=base_url,
+                            temperature=0.7,
+                            max_tokens=4000,
+                        )
+                    except Exception as e:
+                        self.logger.warning(f"Failed to configure OpenRouter LLM: {e}")
+
+            # Fallback to OpenAI if available
+            openai_key = self.model_config.get("openai_api_key")
+            if openai_key:
+                try:
+                    return LLM(
+                        model="gpt-4",
+                        api_key=openai_key,
+                        temperature=0.7,
+                        max_tokens=4000,
+                    )
+                except Exception as e:
+                    self.logger.warning(f"Failed to configure OpenAI fallback LLM: {e}")
+
+            # No valid LLM configuration available
+            self.logger.info("No LLM configuration available, using CrewAI defaults")
+            return None
+
+        except ImportError:
+            self.logger.warning("CrewAI LLM import failed, using defaults")
+            return None
+        except Exception as e:
+            self.logger.error(f"Unexpected error configuring LLM: {e}")
+            return None
 
     def get_bmad_agent(self, agent_id: str) -> Optional[Agent]:
         """Get a registered BMAD agent by ID.

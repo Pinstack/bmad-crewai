@@ -40,6 +40,24 @@ The architecture achieves the PRD goals by establishing a single-source contract
 - **Runtime:** Python 3.8+ with CrewAI v0.1.0+ compatibility
 - **Storage:** Local file system for BMAD artefact generation
 
+### AI Model Configuration
+
+**Primary AI Provider:** OpenRouter API
+- **Models:** `openrouter/sonoma-sky-alpha` (primary), `openrouter/sonoma-dusk-alpha` (backup)
+- **Rationale:** Free models reduce operational costs while maintaining quality
+- **Configuration:** Environment variables (`OPENROUTER_API_KEY`, `OPENROUTER_MODEL`)
+
+**Fallback Provider:** OpenAI API
+- **Models:** `gpt-4` (fallback when OpenRouter unavailable)
+- **Configuration:** Environment variable (`API_OPENAI_KEY`)
+- **Purpose:** Ensures system reliability when primary models are unavailable
+
+**Model Selection Logic:**
+1. Try OpenRouter primary model (`sonoma-sky-alpha`)
+2. If unavailable, try OpenRouter backup model (`sonoma-dusk-alpha`)
+3. If both fail, fallback to OpenAI GPT-4
+4. If all fail, use CrewAI defaults
+
 ### Repository Structure
 
 **Structure:** Monorepo
