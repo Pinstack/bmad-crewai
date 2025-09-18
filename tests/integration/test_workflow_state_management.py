@@ -6,7 +6,6 @@ Tests end-to-end workflow execution with state management, recovery, and concurr
 
 import tempfile
 import threading
-import time
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
@@ -22,15 +21,14 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         self.state_manager = WorkflowStateManager(
-            logger=MagicMock(),
-            storage_dir=self.temp_dir
+            logger=MagicMock(), storage_dir=self.temp_dir
         )
 
         # Create workflow engine with state manager
         self.workflow_engine = BmadWorkflowEngine(
             crew=None,  # Will be mocked
             state_manager=self.state_manager,
-            logger=MagicMock()
+            logger=MagicMock(),
         )
 
     def tearDown(self):
@@ -54,23 +52,25 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
                 {
                     "description": "Task 1: Initialize project",
                     "expected_output": "Project initialized",
-                    "agent": "scrum-master"
+                    "agent": "scrum-master",
                 },
                 {
                     "description": "Task 2: Create requirements",
                     "expected_output": "Requirements document",
-                    "agent": "product-manager"
+                    "agent": "product-manager",
                 },
                 {
                     "description": "Task 3: Design architecture",
                     "expected_output": "Architecture design",
-                    "agent": "architect"
-                }
-            ]
+                    "agent": "architect",
+                },
+            ],
         }
 
         # Act
-        result = self.workflow_engine.execute_workflow(workflow_template, "integration_test_workflow")
+        result = self.workflow_engine.execute_workflow(
+            workflow_template, "integration_test_workflow"
+        )
 
         # Assert
         self.assertEqual(result["status"], "success")
@@ -88,7 +88,9 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
 
         # Verify checkpoints were created
         self.assertIn("checkpoints", final_state)
-        self.assertGreaterEqual(len(final_state["checkpoints"]), 3)  # At least one per task
+        self.assertGreaterEqual(
+            len(final_state["checkpoints"]), 3
+        )  # At least one per task
 
         # Verify timeline
         self.assertIn("execution_timeline", final_state)
@@ -108,23 +110,25 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
                 {
                     "description": "Define requirements",
                     "expected_output": "Requirements defined",
-                    "agent": "product-manager"
+                    "agent": "product-manager",
                 },
                 {
                     "description": "Design solution",
                     "expected_output": "Solution designed",
-                    "agent": "architect"
+                    "agent": "architect",
                 },
                 {
                     "description": "Implement solution",
                     "expected_output": "Solution implemented",
-                    "agent": "dev-agent"
-                }
-            ]
+                    "agent": "dev-agent",
+                },
+            ],
         }
 
         # Act
-        result = self.workflow_engine.execute_workflow(workflow_template, "handoff_test_workflow")
+        result = self.workflow_engine.execute_workflow(
+            workflow_template, "handoff_test_workflow"
+        )
 
         # Assert successful execution
         self.assertEqual(result["status"], "success")
@@ -168,19 +172,19 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
                 {
                     "description": "Task 1",
                     "expected_output": "Task 1 complete",
-                    "agent": "scrum-master"
+                    "agent": "scrum-master",
                 },
                 {
                     "description": "Task 2 - will fail",
                     "expected_output": "Task 2 complete",
-                    "agent": "product-manager"
+                    "agent": "product-manager",
                 },
                 {
                     "description": "Task 3",
                     "expected_output": "Task 3 complete",
-                    "agent": "architect"
-                }
-            ]
+                    "agent": "architect",
+                },
+            ],
         }
 
         # Simulate task 2 failure
@@ -191,7 +195,7 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
                     "agent": task_spec.get("agent"),
                     "status": "failed",
                     "error": "Simulated failure",
-                    "timestamp": "2025-01-01T10:00:00"
+                    "timestamp": "2025-01-01T10:00:00",
                 }
             else:
                 return {
@@ -199,14 +203,19 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
                     "agent": task_spec.get("agent"),
                     "status": "success",
                     "message": f"Task {task_index} completed",
-                    "timestamp": "2025-01-01T10:00:00"
+                    "timestamp": "2025-01-01T10:00:00",
                 }
 
         # Patch the task execution method
-        with patch.object(self.workflow_engine, '_execute_task_with_agent_handling',
-                         side_effect=mock_execute_task_with_agent_handling):
+        with patch.object(
+            self.workflow_engine,
+            "_execute_task_with_agent_handling",
+            side_effect=mock_execute_task_with_agent_handling,
+        ):
             # Act - Execute workflow (should fail at task 2)
-            result = self.workflow_engine.execute_workflow(workflow_template, "interruption_test")
+            result = self.workflow_engine.execute_workflow(
+                workflow_template, "interruption_test"
+            )
 
             # Assert workflow failed
             self.assertEqual(result["status"], "failed")
@@ -218,7 +227,9 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
             self.assertEqual(interrupted_state["status"], "interrupted")
 
             # Test recovery from checkpoint
-            recovery_result = self.workflow_engine.recover_workflow_from_checkpoint(workflow_id)
+            recovery_result = self.workflow_engine.recover_workflow_from_checkpoint(
+                workflow_id
+            )
 
             self.assertIsNotNone(recovery_result)
             self.assertEqual(recovery_result["status"], "recovered")
@@ -236,9 +247,9 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
                 {
                     "description": "Simple task",
                     "expected_output": "Task complete",
-                    "agent": "scrum-master"
+                    "agent": "scrum-master",
                 }
-            ]
+            ],
         }
 
         results = []
@@ -248,8 +259,7 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
             """Execute a workflow instance."""
             try:
                 result = self.workflow_engine.execute_workflow(
-                    workflow_template,
-                    f"concurrent_workflow_{instance_id}"
+                    workflow_template, f"concurrent_workflow_{instance_id}"
                 )
                 results.append((instance_id, result))
             except Exception as e:
@@ -298,13 +308,15 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
                 {
                     "description": "Long running task",
                     "expected_output": "Task complete",
-                    "agent": "architect"
+                    "agent": "architect",
                 }
-            ]
+            ],
         }
 
         # Start workflow
-        result = self.workflow_engine.execute_workflow(workflow_template, "pause_resume_test")
+        result = self.workflow_engine.execute_workflow(
+            workflow_template, "pause_resume_test"
+        )
 
         # Should complete immediately in this test setup
         self.assertEqual(result["status"], "success")
@@ -315,7 +327,7 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
             "status": "running",
             "current_step": "task_1",
             "steps_completed": [],
-            "total_steps": 1
+            "total_steps": 1,
         }
 
         self.state_manager.persist_state(workflow_id, initial_state)
@@ -356,28 +368,30 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
                 {
                     "description": "Task 1",
                     "expected_output": "Task 1 output",
-                    "agent": "scrum-master"
+                    "agent": "scrum-master",
                 },
                 {
                     "description": "Task 2",
                     "expected_output": "Task 2 output",
-                    "agent": "product-manager"
+                    "agent": "product-manager",
                 },
                 {
                     "description": "Task 3",
                     "expected_output": "Task 3 output",
-                    "agent": "architect"
+                    "agent": "architect",
                 },
                 {
                     "description": "Task 4",
                     "expected_output": "Task 4 output",
-                    "agent": "dev-agent"
-                }
-            ]
+                    "agent": "dev-agent",
+                },
+            ],
         }
 
         # Act
-        result = self.workflow_engine.execute_workflow(workflow_template, "progress_test_workflow")
+        result = self.workflow_engine.execute_workflow(
+            workflow_template, "progress_test_workflow"
+        )
 
         # Assert successful completion
         self.assertEqual(result["status"], "success")
@@ -403,7 +417,9 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
 
         # Verify active workflow tracking is cleaned up
         active_info = status["active_info"]
-        self.assertEqual(active_info["status"], "running")  # May still be running during check
+        self.assertEqual(
+            active_info["status"], "running"
+        )  # May still be running during check
 
     def test_workflow_state_integrity_validation(self):
         """Test workflow state integrity validation across operations."""
@@ -416,7 +432,7 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
             "steps_completed": [],
             "total_steps": 3,
             "agent_handoffs": [],
-            "execution_timeline": []
+            "execution_timeline": [],
         }
 
         self.state_manager.persist_state(workflow_id, initial_state)
@@ -426,8 +442,12 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
         self.assertTrue(integrity["is_valid"])
 
         # Simulate some operations
-        self.state_manager.track_agent_handoff(workflow_id, "scrum-master", "product-manager")
-        self.state_manager.track_agent_handoff(workflow_id, "product-manager", "architect")
+        self.state_manager.track_agent_handoff(
+            workflow_id, "scrum-master", "product-manager"
+        )
+        self.state_manager.track_agent_handoff(
+            workflow_id, "product-manager", "architect"
+        )
 
         # Validate integrity after operations
         integrity = self.state_manager.validate_state_integrity(workflow_id)
@@ -435,14 +455,15 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
 
         # Simulate corruption by manually modifying state file
         import json
+
         state_file = Path(self.temp_dir) / f"{workflow_id}.json"
-        with open(state_file, 'r') as f:
+        with open(state_file, "r") as f:
             current_state = json.load(f)
 
         # Remove required field
         del current_state["_metadata"]
 
-        with open(state_file, 'w') as f:
+        with open(state_file, "w") as f:
             json.dump(current_state, f)
 
         # Validate should detect corruption
@@ -461,16 +482,18 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
                 {
                     "description": "Single task",
                     "expected_output": "Task complete",
-                    "agent": "scrum-master"
+                    "agent": "scrum-master",
                 }
-            ]
+            ],
         }
 
         with patch("src.bmad_crewai.crewai_engine.Crew") as mock_crew_class:
             mock_crew = Mock()
             mock_crew_class.return_value = mock_crew
 
-            result = self.workflow_engine.execute_workflow(workflow_template, workflow_id)
+            result = self.workflow_engine.execute_workflow(
+                workflow_template, workflow_id
+            )
 
             self.assertEqual(result["status"], "success")
 
@@ -490,5 +513,5 @@ class TestWorkflowStateManagementIntegration(unittest.TestCase):
             self.assertIsNone(recovered)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

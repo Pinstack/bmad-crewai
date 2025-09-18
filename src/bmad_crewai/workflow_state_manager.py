@@ -7,13 +7,10 @@ for complex workflow execution with agent handoffs and interruptions.
 
 import json
 import logging
-import os
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
-
-from .exceptions import BmadCrewAIError
 
 
 class WorkflowStateManager:
@@ -29,7 +26,11 @@ class WorkflowStateManager:
     - Concurrent agent operation support with state synchronization
     """
 
-    def __init__(self, logger: Optional[logging.Logger] = None, storage_dir: str = ".bmad-workflows"):
+    def __init__(
+        self,
+        logger: Optional[logging.Logger] = None,
+        storage_dir: str = ".bmad-workflows",
+    ):
         """
         Initialize the WorkflowStateManager.
 
@@ -45,7 +46,9 @@ class WorkflowStateManager:
         self._lock = threading.RLock()
         self._active_workflows: Set[str] = set()
 
-        self.logger.info(f"WorkflowStateManager initialized with storage dir: {storage_dir}")
+        self.logger.info(
+            f"WorkflowStateManager initialized with storage dir: {storage_dir}"
+        )
 
     def persist_state(self, workflow_id: str, state_dict: Dict[str, Any]) -> bool:
         """
@@ -66,25 +69,29 @@ class WorkflowStateManager:
                     "_metadata": {
                         "workflow_id": workflow_id,
                         "timestamp": datetime.now().isoformat(),
-                        "version": "1.0"
-                    }
+                        "version": "1.0",
+                    },
                 }
 
                 # Validate state before persisting
                 if not self._validate_state_structure(enriched_state):
-                    self.logger.error(f"Invalid state structure for workflow {workflow_id}")
+                    self.logger.error(
+                        f"Invalid state structure for workflow {workflow_id}"
+                    )
                     return False
 
                 state_file = self.storage_dir / f"{workflow_id}.json"
 
-                with open(state_file, 'w', encoding='utf-8') as f:
+                with open(state_file, "w", encoding="utf-8") as f:
                     json.dump(enriched_state, f, indent=2, ensure_ascii=False)
 
                 self.logger.info(f"Workflow state persisted for {workflow_id}")
                 return True
 
             except Exception as e:
-                self.logger.error(f"Failed to persist state for workflow {workflow_id}: {e}")
+                self.logger.error(
+                    f"Failed to persist state for workflow {workflow_id}: {e}"
+                )
                 return False
 
     def recover_state(self, workflow_id: str) -> Optional[Dict[str, Any]]:
@@ -102,15 +109,19 @@ class WorkflowStateManager:
                 state_file = self.storage_dir / f"{workflow_id}.json"
 
                 if not state_file.exists():
-                    self.logger.warning(f"No state file found for workflow {workflow_id}")
+                    self.logger.warning(
+                        f"No state file found for workflow {workflow_id}"
+                    )
                     return None
 
-                with open(state_file, 'r', encoding='utf-8') as f:
+                with open(state_file, "r", encoding="utf-8") as f:
                     state_data = json.load(f)
 
                 # Validate loaded state
                 if not self._validate_state_structure(state_data):
-                    self.logger.error(f"Corrupted state file for workflow {workflow_id}")
+                    self.logger.error(
+                        f"Corrupted state file for workflow {workflow_id}"
+                    )
                     # Attempt recovery by creating backup and returning minimal state
                     self._handle_corrupted_state(workflow_id, state_data)
                     return self._create_minimal_recovery_state(workflow_id)
@@ -122,7 +133,9 @@ class WorkflowStateManager:
                 self.logger.error(f"JSON decode error for workflow {workflow_id}: {e}")
                 return self._create_minimal_recovery_state(workflow_id)
             except Exception as e:
-                self.logger.error(f"Failed to recover state for workflow {workflow_id}: {e}")
+                self.logger.error(
+                    f"Failed to recover state for workflow {workflow_id}: {e}"
+                )
                 return None
 
     def _validate_state_structure(self, state_dict: Dict[str, Any]) -> bool:
@@ -151,7 +164,14 @@ class WorkflowStateManager:
                 return False
 
             # Validate status values
-            valid_statuses = ["initialized", "running", "paused", "completed", "failed", "interrupted"]
+            valid_statuses = [
+                "initialized",
+                "running",
+                "paused",
+                "completed",
+                "failed",
+                "interrupted",
+            ]
             if state_dict.get("status") not in valid_statuses:
                 return False
 
@@ -161,7 +181,9 @@ class WorkflowStateManager:
             self.logger.error(f"State validation error: {e}")
             return False
 
-    def _handle_corrupted_state(self, workflow_id: str, corrupted_data: Dict[str, Any]) -> None:
+    def _handle_corrupted_state(
+        self, workflow_id: str, corrupted_data: Dict[str, Any]
+    ) -> None:
         """
         Handle corrupted state files by creating backups.
 
@@ -173,7 +195,7 @@ class WorkflowStateManager:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_file = self.storage_dir / f"{workflow_id}_corrupted_{timestamp}.json"
 
-            with open(backup_file, 'w', encoding='utf-8') as f:
+            with open(backup_file, "w", encoding="utf-8") as f:
                 json.dump(corrupted_data, f, indent=2, ensure_ascii=False)
 
             self.logger.warning(f"Corrupted state backed up to {backup_file}")
@@ -196,21 +218,22 @@ class WorkflowStateManager:
             "current_step": "recovery",
             "steps_completed": [],
             "agent_handoffs": [],
-            "progress": {
-                "completed": 0,
-                "total": 0,
-                "percentage": 0
-            },
+            "progress": {"completed": 0, "total": 0, "percentage": 0},
             "_metadata": {
                 "workflow_id": workflow_id,
                 "timestamp": datetime.now().isoformat(),
                 "version": "1.0",
-                "recovered": True
-            }
+                "recovered": True,
+            },
         }
 
-    def track_agent_handoff(self, workflow_id: str, from_agent: str, to_agent: str,
-                          handoff_data: Optional[Dict[str, Any]] = None) -> bool:
+    def track_agent_handoff(
+        self,
+        workflow_id: str,
+        from_agent: str,
+        to_agent: str,
+        handoff_data: Optional[Dict[str, Any]] = None,
+    ) -> bool:
         """
         Track agent handoffs and dependencies in workflow state.
 
@@ -227,7 +250,9 @@ class WorkflowStateManager:
             try:
                 state = self.recover_state(workflow_id)
                 if not state:
-                    self.logger.error(f"Cannot track handoff for non-existent workflow {workflow_id}")
+                    self.logger.error(
+                        f"Cannot track handoff for non-existent workflow {workflow_id}"
+                    )
                     return False
 
                 # Initialize handoff tracking structures
@@ -247,7 +272,7 @@ class WorkflowStateManager:
                     "timestamp": datetime.now().isoformat(),
                     "sequence_id": len(state["agent_handoffs"]),
                     "data": handoff_data or {},
-                    "status": "completed"
+                    "status": "completed",
                 }
 
                 state["agent_handoffs"].append(handoff_record)
@@ -265,7 +290,7 @@ class WorkflowStateManager:
                     "from_agent": from_agent,
                     "to_agent": to_agent,
                     "timestamp": handoff_record["timestamp"],
-                    "description": f"Agent handoff: {from_agent} → {to_agent}"
+                    "description": f"Agent handoff: {from_agent} → {to_agent}",
                 }
                 state["execution_timeline"].append(timeline_entry)
 
@@ -275,7 +300,9 @@ class WorkflowStateManager:
                 return self.persist_state(workflow_id, state)
 
             except Exception as e:
-                self.logger.error(f"Failed to track agent handoff for {workflow_id}: {e}")
+                self.logger.error(
+                    f"Failed to track agent handoff for {workflow_id}: {e}"
+                )
                 return False
 
     def _update_progress_metrics(self, state: Dict[str, Any]) -> None:
@@ -290,18 +317,24 @@ class WorkflowStateManager:
             total_steps = state.get("total_steps", max(steps_completed, 1))
 
             # Calculate progress percentage
-            percentage = min(100, (steps_completed / total_steps) * 100) if total_steps > 0 else 0
+            percentage = (
+                min(100, (steps_completed / total_steps) * 100)
+                if total_steps > 0
+                else 0
+            )
 
             # Update progress structure
             if "progress" not in state:
                 state["progress"] = {}
 
-            state["progress"].update({
-                "completed": steps_completed,
-                "total": total_steps,
-                "percentage": round(percentage, 2),
-                "last_updated": datetime.now().isoformat()
-            })
+            state["progress"].update(
+                {
+                    "completed": steps_completed,
+                    "total": total_steps,
+                    "percentage": round(percentage, 2),
+                    "last_updated": datetime.now().isoformat(),
+                }
+            )
 
             # Update status based on progress
             if state.get("status") == "running":
@@ -337,14 +370,18 @@ class WorkflowStateManager:
                     "percentage": state.get("progress", {}).get("percentage", 0),
                     "last_updated": state.get("_metadata", {}).get("timestamp"),
                     "agent_handoffs": len(state.get("agent_handoffs", [])),
-                    "execution_timeline_entries": len(state.get("execution_timeline", []))
+                    "execution_timeline_entries": len(
+                        state.get("execution_timeline", [])
+                    ),
                 }
 
                 # Add timeline summary if available
                 timeline = state.get("execution_timeline", [])
                 if timeline:
                     progress_info["last_activity"] = timeline[-1].get("timestamp")
-                    progress_info["recent_activities"] = timeline[-3:]  # Last 3 activities
+                    progress_info["recent_activities"] = timeline[
+                        -3:
+                    ]  # Last 3 activities
 
                 return progress_info
 
@@ -352,7 +389,9 @@ class WorkflowStateManager:
                 self.logger.error(f"Failed to get progress for {workflow_id}: {e}")
                 return None
 
-    def mark_workflow_interrupted(self, workflow_id: str, reason: str = "unknown") -> bool:
+    def mark_workflow_interrupted(
+        self, workflow_id: str, reason: str = "unknown"
+    ) -> bool:
         """
         Mark a workflow as interrupted for recovery handling.
 
@@ -377,7 +416,9 @@ class WorkflowStateManager:
                 return self.persist_state(workflow_id, state)
 
             except Exception as e:
-                self.logger.error(f"Failed to mark workflow {workflow_id} as interrupted: {e}")
+                self.logger.error(
+                    f"Failed to mark workflow {workflow_id} as interrupted: {e}"
+                )
                 return False
 
     def cleanup_workflow_state(self, workflow_id: str) -> bool:
@@ -420,7 +461,12 @@ class WorkflowStateManager:
 
                 workflow_id = wf_file.stem
                 state = self.recover_state(workflow_id)
-                if state and state.get("status") in ["initialized", "running", "paused", "interrupted"]:
+                if state and state.get("status") in [
+                    "initialized",
+                    "running",
+                    "paused",
+                    "interrupted",
+                ]:
                     active_workflows.append(workflow_id)
 
             return active_workflows
@@ -429,7 +475,9 @@ class WorkflowStateManager:
             self.logger.error(f"Failed to list active workflows: {e}")
             return []
 
-    def validate_agent_handoff(self, workflow_id: str, from_agent: str, to_agent: str) -> Dict[str, Any]:
+    def validate_agent_handoff(
+        self, workflow_id: str, from_agent: str, to_agent: str
+    ) -> Dict[str, Any]:
         """
         Validate agent handoff before execution.
 
@@ -445,7 +493,7 @@ class WorkflowStateManager:
             "is_valid": True,
             "warnings": [],
             "errors": [],
-            "recommendations": []
+            "recommendations": [],
         }
 
         try:
@@ -458,29 +506,43 @@ class WorkflowStateManager:
             # Check if workflow is in valid state for handoff
             current_status = state.get("status")
             if current_status not in ["running", "initialized"]:
-                validation_result["warnings"].append(f"Workflow status is {current_status}, handoff may not be expected")
+                validation_result["warnings"].append(
+                    f"Workflow status is {current_status}, handoff may not be expected"
+                )
 
             # Check agent dependencies
             dependencies = state.get("agent_dependencies", {})
             if from_agent in dependencies:
                 expected_targets = dependencies[from_agent]
                 if to_agent not in expected_targets:
-                    validation_result["warnings"].append(f"Unexpected handoff: {from_agent} → {to_agent}")
+                    validation_result["warnings"].append(
+                        f"Unexpected handoff: {from_agent} → {to_agent}"
+                    )
 
             # Check for circular dependencies
             if self._has_circular_dependency(state, from_agent, to_agent):
                 validation_result["is_valid"] = False
-                validation_result["errors"].append(f"Circular dependency detected: {from_agent} ↔ {to_agent}")
+                validation_result["errors"].append(
+                    f"Circular dependency detected: {from_agent} ↔ {to_agent}"
+                )
 
             # Check agent handoff history for patterns
             handoffs = state.get("agent_handoffs", [])
-            recent_handoffs = [h for h in handoffs if h.get("from_agent") == from_agent and h.get("to_agent") == to_agent]
+            recent_handoffs = [
+                h
+                for h in handoffs
+                if h.get("from_agent") == from_agent and h.get("to_agent") == to_agent
+            ]
             if len(recent_handoffs) > 5:
-                validation_result["warnings"].append(f"Frequent handoffs between {from_agent} and {to_agent} detected")
+                validation_result["warnings"].append(
+                    f"Frequent handoffs between {from_agent} and {to_agent} detected"
+                )
 
             # Validate handoff data structure
             if "agent_handoffs" not in state:
-                validation_result["recommendations"].append("Initialize agent_handoffs structure in state")
+                validation_result["recommendations"].append(
+                    "Initialize agent_handoffs structure in state"
+                )
 
         except Exception as e:
             validation_result["is_valid"] = False
@@ -488,7 +550,9 @@ class WorkflowStateManager:
 
         return validation_result
 
-    def _has_circular_dependency(self, state: Dict[str, Any], from_agent: str, to_agent: str) -> bool:
+    def _has_circular_dependency(
+        self, state: Dict[str, Any], from_agent: str, to_agent: str
+    ) -> bool:
         """
         Check for circular dependencies in agent handoffs.
 
@@ -528,7 +592,9 @@ class WorkflowStateManager:
         except Exception:
             return False  # Conservative approach
 
-    def recover_from_agent_failure(self, workflow_id: str, failed_agent: str) -> Optional[Dict[str, Any]]:
+    def recover_from_agent_failure(
+        self, workflow_id: str, failed_agent: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Recover workflow state from agent failure.
 
@@ -555,7 +621,7 @@ class WorkflowStateManager:
                     "type": "failure",
                     "agent": failed_agent,
                     "timestamp": state["failure_time"],
-                    "description": f"Agent failure: {failed_agent}"
+                    "description": f"Agent failure: {failed_agent}",
                 }
                 state["execution_timeline"].append(timeline_entry)
 
@@ -569,14 +635,18 @@ class WorkflowStateManager:
                 return {
                     "recovery_state": state,
                     "options": recovery_options,
-                    "can_resume": len(recovery_options) > 0
+                    "can_resume": len(recovery_options) > 0,
                 }
 
             except Exception as e:
-                self.logger.error(f"Failed to recover from agent failure for {workflow_id}: {e}")
+                self.logger.error(
+                    f"Failed to recover from agent failure for {workflow_id}: {e}"
+                )
                 return None
 
-    def _identify_recovery_options(self, state: Dict[str, Any], failed_agent: str) -> List[Dict[str, Any]]:
+    def _identify_recovery_options(
+        self, state: Dict[str, Any], failed_agent: str
+    ) -> List[Dict[str, Any]]:
         """
         Identify possible recovery options after agent failure.
 
@@ -594,48 +664,60 @@ class WorkflowStateManager:
             dependencies = state.get("agent_dependencies", {})
 
             # Option 1: Retry with same agent
-            options.append({
-                "id": "retry_same_agent",
-                "description": f"Retry the failed operation with {failed_agent}",
-                "difficulty": "low",
-                "risk": "medium"
-            })
+            options.append(
+                {
+                    "id": "retry_same_agent",
+                    "description": f"Retry the failed operation with {failed_agent}",
+                    "difficulty": "low",
+                    "risk": "medium",
+                }
+            )
 
             # Option 2: Reroute to alternative agent
-            alternative_agents = self._find_alternative_agents(failed_agent, dependencies)
+            alternative_agents = self._find_alternative_agents(
+                failed_agent, dependencies
+            )
             if alternative_agents:
-                options.append({
-                    "id": "reroute_alternative",
-                    "description": f"Reroute to alternative agent: {', '.join(alternative_agents)}",
-                    "difficulty": "medium",
-                    "risk": "low",
-                    "alternatives": alternative_agents
-                })
+                options.append(
+                    {
+                        "id": "reroute_alternative",
+                        "description": f"Reroute to alternative agent: {', '.join(alternative_agents)}",
+                        "difficulty": "medium",
+                        "risk": "low",
+                        "alternatives": alternative_agents,
+                    }
+                )
 
             # Option 3: Skip failed step if possible
             if self._can_skip_step(state, failed_agent):
-                options.append({
-                    "id": "skip_step",
-                    "description": "Skip the failed step and continue workflow",
-                    "difficulty": "high",
-                    "risk": "high"
-                })
+                options.append(
+                    {
+                        "id": "skip_step",
+                        "description": "Skip the failed step and continue workflow",
+                        "difficulty": "high",
+                        "risk": "high",
+                    }
+                )
 
             # Option 4: Rollback to previous checkpoint
             if self._has_previous_checkpoint(state):
-                options.append({
-                    "id": "rollback_checkpoint",
-                    "description": "Rollback to last successful checkpoint",
-                    "difficulty": "medium",
-                    "risk": "medium"
-                })
+                options.append(
+                    {
+                        "id": "rollback_checkpoint",
+                        "description": "Rollback to last successful checkpoint",
+                        "difficulty": "medium",
+                        "risk": "medium",
+                    }
+                )
 
         except Exception as e:
             self.logger.error(f"Error identifying recovery options: {e}")
 
         return options
 
-    def _find_alternative_agents(self, failed_agent: str, dependencies: Dict[str, List[str]]) -> List[str]:
+    def _find_alternative_agents(
+        self, failed_agent: str, dependencies: Dict[str, List[str]]
+    ) -> List[str]:
         """
         Find alternative agents that can take over for failed agent.
 
@@ -662,7 +744,7 @@ class WorkflowStateManager:
             "analyst": ["architect", "pm"],
             "pm": ["analyst", "po"],
             "po": ["pm", "sm"],
-            "sm": ["po", "pm"]
+            "sm": ["po", "pm"],
         }
 
         if failed_agent in agent_alternatives:
@@ -688,7 +770,10 @@ class WorkflowStateManager:
 
             # If step is not critical to workflow completion, it might be skippable
             # This is a simplified check - in practice, this would need domain knowledge
-            critical_agents = ["dev", "qa"]  # Agents whose failure typically blocks progress
+            critical_agents = [
+                "dev",
+                "qa",
+            ]  # Agents whose failure typically blocks progress
             return failed_agent not in critical_agents
 
         except Exception:
@@ -725,14 +810,16 @@ class WorkflowStateManager:
             "workflow_id": workflow_id,
             "is_valid": False,
             "issues": [],
-            "recommendations": []
+            "recommendations": [],
         }
 
         try:
             state = self.recover_state(workflow_id)
             if not state:
                 validation_result["issues"].append("State file not found or unreadable")
-                validation_result["recommendations"].append("Check workflow storage directory")
+                validation_result["recommendations"].append(
+                    "Check workflow storage directory"
+                )
                 return validation_result
 
             # Structure validation
@@ -742,8 +829,12 @@ class WorkflowStateManager:
 
             # Data consistency checks
             if state.get("status") == "completed" and not state.get("steps_completed"):
-                validation_result["issues"].append("Completed workflow has no completed steps")
-                validation_result["recommendations"].append("Verify workflow completion logic")
+                validation_result["issues"].append(
+                    "Completed workflow has no completed steps"
+                )
+                validation_result["recommendations"].append(
+                    "Verify workflow completion logic"
+                )
 
             # Agent dependency validation
             handoffs = state.get("agent_handoffs", [])
@@ -755,9 +846,13 @@ class WorkflowStateManager:
 
                 if from_agent and to_agent:
                     if from_agent not in dependencies:
-                        validation_result["issues"].append(f"Missing dependency record for {from_agent}")
+                        validation_result["issues"].append(
+                            f"Missing dependency record for {from_agent}"
+                        )
                     elif to_agent not in dependencies[from_agent]:
-                        validation_result["issues"].append(f"Inconsistent dependency: {from_agent} -> {to_agent}")
+                        validation_result["issues"].append(
+                            f"Inconsistent dependency: {from_agent} -> {to_agent}"
+                        )
 
             if not validation_result["issues"]:
                 validation_result["is_valid"] = True

@@ -14,10 +14,9 @@ import json
 import os
 import tempfile
 import threading
-import time
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from src.bmad_crewai.workflow_state_manager import WorkflowStateManager
 
@@ -29,8 +28,7 @@ class TestWorkflowStateManager(unittest.TestCase):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         self.state_manager = WorkflowStateManager(
-            logger=MagicMock(),
-            storage_dir=self.temp_dir
+            logger=MagicMock(), storage_dir=self.temp_dir
         )
 
     def tearDown(self):
@@ -54,7 +52,7 @@ class TestWorkflowStateManager(unittest.TestCase):
             "status": "running",
             "current_step": "task_1",
             "steps_completed": [0],
-            "total_steps": 3
+            "total_steps": 3,
         }
 
         result = self.state_manager.persist_state(workflow_id, state_dict)
@@ -65,7 +63,7 @@ class TestWorkflowStateManager(unittest.TestCase):
         self.assertTrue(state_file.exists())
 
         # Verify content
-        with open(state_file, 'r') as f:
+        with open(state_file, "r") as f:
             saved_data = json.load(f)
 
         self.assertEqual(saved_data["status"], "running")
@@ -89,7 +87,7 @@ class TestWorkflowStateManager(unittest.TestCase):
             "current_step": "task_final",
             "steps_completed": [0, 1, 2],
             "total_steps": 3,
-            "custom_data": "test_value"
+            "custom_data": "test_value",
         }
 
         # First persist the state
@@ -115,7 +113,7 @@ class TestWorkflowStateManager(unittest.TestCase):
 
         # Create corrupted JSON file
         state_file = self.state_manager.storage_dir / f"{workflow_id}.json"
-        with open(state_file, 'w') as f:
+        with open(state_file, "w") as f:
             f.write("{ invalid json content }")
 
         recovered_state = self.state_manager.recover_state(workflow_id)
@@ -132,7 +130,7 @@ class TestWorkflowStateManager(unittest.TestCase):
             "status": "running",
             "current_step": "task_1",
             "steps_completed": [],
-            "total_steps": 2
+            "total_steps": 2,
         }
 
         # Initialize workflow state
@@ -143,7 +141,10 @@ class TestWorkflowStateManager(unittest.TestCase):
             workflow_id=workflow_id,
             from_agent="architect",
             to_agent="dev-agent",
-            handoff_data={"artifacts": ["design_docs"], "notes": "Ready for implementation"}
+            handoff_data={
+                "artifacts": ["design_docs"],
+                "notes": "Ready for implementation",
+            },
         )
 
         self.assertTrue(result)
@@ -168,9 +169,7 @@ class TestWorkflowStateManager(unittest.TestCase):
     def test_track_agent_handoff_nonexistent_workflow(self):
         """Test agent handoff tracking for non-existent workflow."""
         result = self.state_manager.track_agent_handoff(
-            workflow_id="nonexistent",
-            from_agent="architect",
-            to_agent="dev-agent"
+            workflow_id="nonexistent", from_agent="architect", to_agent="dev-agent"
         )
         self.assertFalse(result)
 
@@ -182,11 +181,7 @@ class TestWorkflowStateManager(unittest.TestCase):
             "current_step": "task_2",
             "steps_completed": [0, 1],
             "total_steps": 5,
-            "progress": {
-                "completed": 2,
-                "total": 5,
-                "percentage": 40.0
-            }
+            "progress": {"completed": 2, "total": 5, "percentage": 40.0},
         }
 
         self.state_manager.persist_state(workflow_id, state_dict)
@@ -214,20 +209,20 @@ class TestWorkflowStateManager(unittest.TestCase):
                     "from_agent": "pm",
                     "to_agent": "architect",
                     "timestamp": "2025-01-01T10:00:00",
-                    "data": {}
+                    "data": {},
                 },
                 {
                     "from_agent": "architect",
                     "to_agent": "dev-agent",
                     "timestamp": "2025-01-01T11:00:00",
-                    "data": {}
-                }
+                    "data": {},
+                },
             ],
             "execution_timeline": [
                 {"type": "initialization", "timestamp": "2025-01-01T09:00:00"},
                 {"type": "handoff", "timestamp": "2025-01-01T10:00:00"},
-                {"type": "handoff", "timestamp": "2025-01-01T11:00:00"}
-            ]
+                {"type": "handoff", "timestamp": "2025-01-01T11:00:00"},
+            ],
         }
 
         self.state_manager.persist_state(workflow_id, state_dict)
@@ -246,15 +241,13 @@ class TestWorkflowStateManager(unittest.TestCase):
         state_dict = {
             "status": "running",
             "current_step": "task_1",
-            "agent_handoffs": []
+            "agent_handoffs": [],
         }
 
         self.state_manager.persist_state(workflow_id, state_dict)
 
         validation = self.state_manager.validate_agent_handoff(
-            workflow_id=workflow_id,
-            from_agent="architect",
-            to_agent="dev-agent"
+            workflow_id=workflow_id, from_agent="architect", to_agent="dev-agent"
         )
 
         self.assertTrue(validation["is_valid"])
@@ -268,15 +261,13 @@ class TestWorkflowStateManager(unittest.TestCase):
             "status": "running",
             "agent_dependencies": {
                 "dev-agent": ["architect"]  # architect already depends on dev-agent
-            }
+            },
         }
 
         self.state_manager.persist_state(workflow_id, state_dict)
 
         validation = self.state_manager.validate_agent_handoff(
-            workflow_id=workflow_id,
-            from_agent="architect",
-            to_agent="dev-agent"
+            workflow_id=workflow_id, from_agent="architect", to_agent="dev-agent"
         )
 
         self.assertFalse(validation["is_valid"])
@@ -285,17 +276,12 @@ class TestWorkflowStateManager(unittest.TestCase):
     def test_validate_agent_handoff_workflow_not_running(self):
         """Test agent handoff validation when workflow is not in running state."""
         workflow_id = "paused_workflow"
-        state_dict = {
-            "status": "paused",
-            "current_step": "task_1"
-        }
+        state_dict = {"status": "paused", "current_step": "task_1"}
 
         self.state_manager.persist_state(workflow_id, state_dict)
 
         validation = self.state_manager.validate_agent_handoff(
-            workflow_id=workflow_id,
-            from_agent="architect",
-            to_agent="dev-agent"
+            workflow_id=workflow_id, from_agent="architect", to_agent="dev-agent"
         )
 
         self.assertTrue(validation["is_valid"])  # Still valid, just warnings
@@ -307,14 +293,13 @@ class TestWorkflowStateManager(unittest.TestCase):
         state_dict = {
             "status": "running",
             "current_step": "task_2",
-            "agent_handoffs": []
+            "agent_handoffs": [],
         }
 
         self.state_manager.persist_state(workflow_id, state_dict)
 
         recovery_result = self.state_manager.recover_from_agent_failure(
-            workflow_id=workflow_id,
-            failed_agent="dev-agent"
+            workflow_id=workflow_id, failed_agent="dev-agent"
         )
 
         self.assertIsNotNone(recovery_result)
@@ -331,16 +316,12 @@ class TestWorkflowStateManager(unittest.TestCase):
     def test_mark_workflow_interrupted(self):
         """Test marking workflow as interrupted."""
         workflow_id = "interrupt_test_workflow"
-        state_dict = {
-            "status": "running",
-            "current_step": "task_1"
-        }
+        state_dict = {"status": "running", "current_step": "task_1"}
 
         self.state_manager.persist_state(workflow_id, state_dict)
 
         result = self.state_manager.mark_workflow_interrupted(
-            workflow_id=workflow_id,
-            reason="user_request"
+            workflow_id=workflow_id, reason="user_request"
         )
 
         self.assertTrue(result)
@@ -357,7 +338,7 @@ class TestWorkflowStateManager(unittest.TestCase):
             ("active_workflow_1", {"status": "running", "current_step": "task_1"}),
             ("active_workflow_2", {"status": "initialized", "current_step": "setup"}),
             ("completed_workflow", {"status": "completed", "current_step": "final"}),
-            ("failed_workflow", {"status": "failed", "current_step": "error"})
+            ("failed_workflow", {"status": "failed", "current_step": "error"}),
         ]
 
         for workflow_id, state_dict in workflows_data:
@@ -404,8 +385,8 @@ class TestWorkflowStateManager(unittest.TestCase):
             "_metadata": {
                 "workflow_id": workflow_id,
                 "timestamp": "2025-01-01T10:00:00",
-                "version": "1.0"
-            }
+                "version": "1.0",
+            },
         }
 
         self.state_manager.persist_state(workflow_id, valid_state)
@@ -425,8 +406,8 @@ class TestWorkflowStateManager(unittest.TestCase):
             "_metadata": {
                 "workflow_id": workflow_id,
                 "timestamp": "2025-01-01T10:00:00",
-                "version": "1.0"
-            }
+                "version": "1.0",
+            },
         }
 
         self.state_manager.persist_state(workflow_id, problematic_state)
@@ -443,7 +424,7 @@ class TestWorkflowStateManager(unittest.TestCase):
             "status": "running",
             "current_step": "task_1",
             "steps_completed": [],
-            "concurrent_access_count": 0
+            "concurrent_access_count": 0,
         }
 
         self.state_manager.persist_state(workflow_id, initial_state)
@@ -458,7 +439,9 @@ class TestWorkflowStateManager(unittest.TestCase):
                 state = self.state_manager.recover_state(workflow_id)
                 if state:
                     # Modify state
-                    state["concurrent_access_count"] = state.get("concurrent_access_count", 0) + 1
+                    state["concurrent_access_count"] = (
+                        state.get("concurrent_access_count", 0) + 1
+                    )
                     # Write state back
                     success = self.state_manager.persist_state(workflow_id, state)
                     results.append((operation_id, success))
@@ -494,7 +477,7 @@ class TestWorkflowStateManager(unittest.TestCase):
         original_state = {
             "status": "running",
             "current_step": "task_1",
-            "steps_completed": [0]
+            "steps_completed": [0],
         }
 
         # Persist original state
@@ -502,7 +485,7 @@ class TestWorkflowStateManager(unittest.TestCase):
 
         # Manually corrupt the file
         state_file = self.state_manager.storage_dir / f"{workflow_id}.json"
-        with open(state_file, 'w') as f:
+        with open(state_file, "w") as f:
             f.write("corrupted json content")
 
         # Attempt to recover (should create backup and return minimal state)
@@ -512,9 +495,11 @@ class TestWorkflowStateManager(unittest.TestCase):
         self.assertEqual(recovered["status"], "interrupted")
 
         # Check that backup was created
-        backup_files = list(self.state_manager.storage_dir.glob(f"{workflow_id}_corrupted_*.json"))
+        backup_files = list(
+            self.state_manager.storage_dir.glob(f"{workflow_id}_corrupted_*.json")
+        )
         self.assertEqual(len(backup_files), 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

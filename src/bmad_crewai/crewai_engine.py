@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from crewai import Agent, Crew, Process, Task
 
 from .exceptions import BmadCrewAIError
+from .workflow_state_manager import WorkflowStateManager
 
 
 class CrewAIOrchestrationEngine:
@@ -420,8 +421,12 @@ class BmadWorkflowEngine:
     capabilities for complex agent interactions and interruptions.
     """
 
-    def __init__(self, crew: Optional[Crew] = None, state_manager: Optional['WorkflowStateManager'] = None,
-                 logger: Optional[logging.Logger] = None):
+    def __init__(
+        self,
+        crew: Optional[Crew] = None,
+        state_manager: Optional["WorkflowStateManager"] = None,
+        logger: Optional[logging.Logger] = None,
+    ):
         """
         Initialize the BMAD Workflow Engine.
 
@@ -437,6 +442,7 @@ class BmadWorkflowEngine:
         # Initialize state manager if not provided
         if not self.state_manager:
             from .workflow_state_manager import WorkflowStateManager
+
             self.state_manager = WorkflowStateManager(logger=self.logger)
 
         # Threading support for concurrent operations
@@ -445,7 +451,9 @@ class BmadWorkflowEngine:
 
         self.logger.info("BmadWorkflowEngine initialized with state management")
 
-    def execute_workflow(self, workflow_template: Dict[str, Any], workflow_id: Optional[str] = None) -> Dict[str, Any]:
+    def execute_workflow(
+        self, workflow_template: Dict[str, Any], workflow_id: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Execute a workflow with state management integration.
 
@@ -465,24 +473,32 @@ class BmadWorkflowEngine:
         with self._workflow_locks[workflow_id]:
             try:
                 # Initialize workflow state
-                initial_state = self._create_initial_workflow_state(workflow_template, workflow_id)
+                initial_state = self._create_initial_workflow_state(
+                    workflow_template, workflow_id
+                )
                 success = self.state_manager.persist_state(workflow_id, initial_state)
 
                 if not success:
-                    raise BmadCrewAIError(f"Failed to initialize workflow state for {workflow_id}")
+                    raise BmadCrewAIError(
+                        f"Failed to initialize workflow state for {workflow_id}"
+                    )
 
                 self._active_workflows[workflow_id] = {
                     "template": workflow_template,
                     "start_time": datetime.now(),
-                    "status": "running"
+                    "status": "running",
                 }
 
                 # Execute workflow with state checkpoints
-                result = self._execute_with_state_checkpoints(workflow_id, workflow_template)
+                result = self._execute_with_state_checkpoints(
+                    workflow_id, workflow_template
+                )
 
                 # Update final state
                 final_state = self.state_manager.recover_state(workflow_id) or {}
-                final_state["status"] = "completed" if result.get("status") == "success" else "failed"
+                final_state["status"] = (
+                    "completed" if result.get("status") == "success" else "failed"
+                )
                 final_state["end_time"] = datetime.now().isoformat()
                 final_state["result"] = result
 
@@ -505,10 +521,12 @@ class BmadWorkflowEngine:
                     "status": "error",
                     "error": str(e),
                     "workflow_id": workflow_id,
-                    "timestamp": datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat(),
                 }
 
-    def _create_initial_workflow_state(self, workflow_template: Dict[str, Any], workflow_id: str) -> Dict[str, Any]:
+    def _create_initial_workflow_state(
+        self, workflow_template: Dict[str, Any], workflow_id: str
+    ) -> Dict[str, Any]:
         """
         Create initial workflow state from template.
 
@@ -528,25 +546,25 @@ class BmadWorkflowEngine:
             "workflow_template": workflow_template,
             "agent_handoffs": [],
             "agent_dependencies": {},
-            "execution_timeline": [{
-                "type": "initialization",
-                "timestamp": datetime.now().isoformat(),
-                "description": f"Workflow {workflow_id} initialized"
-            }],
-            "progress": {
-                "completed": 0,
-                "total": len(tasks),
-                "percentage": 0.0
-            },
+            "execution_timeline": [
+                {
+                    "type": "initialization",
+                    "timestamp": datetime.now().isoformat(),
+                    "description": f"Workflow {workflow_id} initialized",
+                }
+            ],
+            "progress": {"completed": 0, "total": len(tasks), "percentage": 0.0},
             "checkpoints": [],
             "_metadata": {
                 "workflow_id": workflow_id,
                 "created": datetime.now().isoformat(),
-                "version": "1.0"
-            }
+                "version": "1.0",
+            },
         }
 
-    def _execute_with_state_checkpoints(self, workflow_id: str, workflow_template: Dict[str, Any]) -> Dict[str, Any]:
+    def _execute_with_state_checkpoints(
+        self, workflow_id: str, workflow_template: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Execute workflow with state checkpoints and recovery support.
 
@@ -561,7 +579,7 @@ class BmadWorkflowEngine:
             "status": "running",
             "workflow_id": workflow_id,
             "task_results": [],
-            "checkpoints": []
+            "checkpoints": [],
         }
 
         try:
@@ -575,11 +593,15 @@ class BmadWorkflowEngine:
                 # Update current step in state
                 state = self.state_manager.recover_state(workflow_id)
                 if state:
-                    state["current_step"] = f"task_{i}: {task_spec.get('description', 'unknown')}"
+                    state["current_step"] = (
+                        f"task_{i}: {task_spec.get('description', 'unknown')}"
+                    )
                     self.state_manager.persist_state(workflow_id, state)
 
                 # Execute task
-                task_result = self._execute_task_with_agent_handling(workflow_id, task_spec, i)
+                task_result = self._execute_task_with_agent_handling(
+                    workflow_id, task_spec, i
+                )
 
                 # Record result
                 results["task_results"].append(task_result)
@@ -604,7 +626,9 @@ class BmadWorkflowEngine:
 
         return results
 
-    def _create_checkpoint(self, workflow_id: str, checkpoint_id: str, task_spec: Dict[str, Any]) -> None:
+    def _create_checkpoint(
+        self, workflow_id: str, checkpoint_id: str, task_spec: Dict[str, Any]
+    ) -> None:
         """
         Create a workflow checkpoint before task execution.
 
@@ -622,7 +646,7 @@ class BmadWorkflowEngine:
                 "id": checkpoint_id,
                 "timestamp": datetime.now().isoformat(),
                 "task_spec": task_spec,
-                "state_snapshot": state.copy()
+                "state_snapshot": state.copy(),
             }
 
             if "checkpoints" not in state:
@@ -634,7 +658,9 @@ class BmadWorkflowEngine:
         except Exception as e:
             self.logger.error(f"Failed to create checkpoint {checkpoint_id}: {e}")
 
-    def _execute_task_with_agent_handling(self, workflow_id: str, task_spec: Dict[str, Any], task_index: int) -> Dict[str, Any]:
+    def _execute_task_with_agent_handling(
+        self, workflow_id: str, task_spec: Dict[str, Any], task_index: int
+    ) -> Dict[str, Any]:
         """
         Execute a task with agent handoff handling and state tracking.
 
@@ -651,7 +677,7 @@ class BmadWorkflowEngine:
             "task_index": task_index,
             "agent": agent_id,
             "status": "pending",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
 
         try:
@@ -660,36 +686,46 @@ class BmadWorkflowEngine:
                 prev_task = self._get_previous_task_agent(workflow_id, task_index - 1)
                 if prev_task and agent_id and prev_task != agent_id:
                     # Validate handoff
-                    validation = self.state_manager.validate_agent_handoff(workflow_id, prev_task, agent_id)
+                    validation = self.state_manager.validate_agent_handoff(
+                        workflow_id, prev_task, agent_id
+                    )
                     if not validation.get("is_valid", True):
-                        task_result.update({
-                            "status": "failed",
-                            "error": "Agent handoff validation failed",
-                            "validation": validation
-                        })
+                        task_result.update(
+                            {
+                                "status": "failed",
+                                "error": "Agent handoff validation failed",
+                                "validation": validation,
+                            }
+                        )
                         return task_result
 
                     # Track the handoff
-                    self.state_manager.track_agent_handoff(workflow_id, prev_task, agent_id, {
-                        "task_index": task_index,
-                        "from_task": task_index - 1
-                    })
+                    self.state_manager.track_agent_handoff(
+                        workflow_id,
+                        prev_task,
+                        agent_id,
+                        {"task_index": task_index, "from_task": task_index - 1},
+                    )
 
             # Execute the task (simplified for now - would integrate with actual CrewAI execution)
             if self.crew and agent_id:
                 # In real implementation, this would execute the actual CrewAI task
-                task_result.update({
-                    "status": "success",
-                    "message": f"Task executed by agent {agent_id}",
-                    "simulated": True  # Remove when real execution is implemented
-                })
+                task_result.update(
+                    {
+                        "status": "success",
+                        "message": f"Task executed by agent {agent_id}",
+                        "simulated": True,  # Remove when real execution is implemented
+                    }
+                )
             else:
                 # Fallback for testing/development
-                task_result.update({
-                    "status": "success",
-                    "message": f"Task simulated for agent {agent_id}",
-                    "simulated": True
-                })
+                task_result.update(
+                    {
+                        "status": "success",
+                        "message": f"Task simulated for agent {agent_id}",
+                        "simulated": True,
+                    }
+                )
 
             # Update steps completed
             state = self.state_manager.recover_state(workflow_id)
@@ -700,19 +736,20 @@ class BmadWorkflowEngine:
                 self.state_manager.persist_state(workflow_id, state)
 
         except Exception as e:
-            task_result.update({
-                "status": "failed",
-                "error": str(e)
-            })
+            task_result.update({"status": "failed", "error": str(e)})
 
             # Handle agent failure recovery
-            recovery_info = self.state_manager.recover_from_agent_failure(workflow_id, agent_id or "unknown")
+            recovery_info = self.state_manager.recover_from_agent_failure(
+                workflow_id, agent_id or "unknown"
+            )
             if recovery_info:
                 task_result["recovery_options"] = recovery_info.get("options", [])
 
         return task_result
 
-    def _get_previous_task_agent(self, workflow_id: str, prev_index: int) -> Optional[str]:
+    def _get_previous_task_agent(
+        self, workflow_id: str, prev_index: int
+    ) -> Optional[str]:
         """
         Get the agent that executed the previous task.
 
@@ -737,7 +774,9 @@ class BmadWorkflowEngine:
 
         return None
 
-    def _update_workflow_progress(self, workflow_id: str, completed: int, total: int) -> None:
+    def _update_workflow_progress(
+        self, workflow_id: str, completed: int, total: int
+    ) -> None:
         """
         Update workflow progress metrics.
 
@@ -754,14 +793,16 @@ class BmadWorkflowEngine:
                     "completed": completed,
                     "total": total,
                     "percentage": round(percentage, 2),
-                    "last_updated": datetime.now().isoformat()
+                    "last_updated": datetime.now().isoformat(),
                 }
                 self.state_manager.persist_state(workflow_id, state)
 
         except Exception as e:
             self.logger.error(f"Failed to update workflow progress: {e}")
 
-    def recover_workflow_from_checkpoint(self, workflow_id: str, checkpoint_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def recover_workflow_from_checkpoint(
+        self, workflow_id: str, checkpoint_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """
         Recover workflow execution from a checkpoint.
 
@@ -784,7 +825,9 @@ class BmadWorkflowEngine:
             if not checkpoint_id:
                 checkpoint = checkpoints[-1]
             else:
-                checkpoint = next((cp for cp in checkpoints if cp["id"] == checkpoint_id), None)
+                checkpoint = next(
+                    (cp for cp in checkpoints if cp["id"] == checkpoint_id), None
+                )
 
             if not checkpoint:
                 return None
@@ -801,7 +844,7 @@ class BmadWorkflowEngine:
                 return {
                     "status": "recovered",
                     "checkpoint_id": checkpoint["id"],
-                    "restored_state": restored_state
+                    "restored_state": restored_state,
                 }
 
         except Exception as e:
@@ -836,7 +879,7 @@ class BmadWorkflowEngine:
                 "state": state,
                 "progress": progress,
                 "active_info": active_info,
-                "last_updated": datetime.now().isoformat()
+                "last_updated": datetime.now().isoformat(),
             }
 
         except Exception as e:
@@ -885,7 +928,7 @@ class BmadWorkflowEngine:
                 timeline_entry = {
                     "type": "resume",
                     "timestamp": state["resumed_at"],
-                    "description": "Workflow resumed from pause"
+                    "description": "Workflow resumed from pause",
                 }
                 state["execution_timeline"].append(timeline_entry)
 

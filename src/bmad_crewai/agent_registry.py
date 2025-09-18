@@ -378,8 +378,13 @@ class AgentRegistry:
 
         return results
 
-    def track_agent_handoff(self, workflow_id: str, from_agent: str, to_agent: str,
-                          handoff_data: Optional[Dict[str, Any]] = None) -> bool:
+    def track_agent_handoff(
+        self,
+        workflow_id: str,
+        from_agent: str,
+        to_agent: str,
+        handoff_data: Optional[Dict[str, Any]] = None,
+    ) -> bool:
         """
         Track agent handoffs for workflow state management.
 
@@ -401,13 +406,15 @@ class AgentRegistry:
                 "workflow_id": workflow_id,
                 "from_agent": from_agent,
                 "to_agent": to_agent,
-                "timestamp": logger.info(f"Agent handoff tracked: {from_agent} → {to_agent} in workflow {workflow_id}"),
-                "data": handoff_data or {}
+                "timestamp": logger.info(
+                    f"Agent handoff tracked: {from_agent} → {to_agent} in workflow {workflow_id}"
+                ),
+                "data": handoff_data or {},
             }
 
             # Store handoff in agent metadata for now
             # In full implementation, this would be handled by WorkflowStateManager
-            if not hasattr(self, '_agent_handoffs'):
+            if not hasattr(self, "_agent_handoffs"):
                 self._agent_handoffs = []
 
             self._agent_handoffs.append(handoff_record)
@@ -421,7 +428,9 @@ class AgentRegistry:
             self.logger.error(f"Failed to track agent handoff: {e}")
             return False
 
-    def get_agent_handoffs(self, workflow_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_agent_handoffs(
+        self, workflow_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """
         Get agent handoff records, optionally filtered by workflow.
 
@@ -432,7 +441,7 @@ class AgentRegistry:
             List[Dict[str, Any]]: List of handoff records
         """
         try:
-            handoffs = getattr(self, '_agent_handoffs', [])
+            handoffs = getattr(self, "_agent_handoffs", [])
 
             if workflow_id:
                 handoffs = [h for h in handoffs if h.get("workflow_id") == workflow_id]
@@ -443,7 +452,9 @@ class AgentRegistry:
             self.logger.error(f"Failed to get agent handoffs: {e}")
             return []
 
-    def get_agent_dependencies(self, workflow_id: Optional[str] = None) -> Dict[str, List[str]]:
+    def get_agent_dependencies(
+        self, workflow_id: Optional[str] = None
+    ) -> Dict[str, List[str]]:
         """
         Get agent dependency mapping from handoffs.
 
@@ -474,8 +485,12 @@ class AgentRegistry:
             self.logger.error(f"Failed to get agent dependencies: {e}")
             return {}
 
-    def validate_agent_handoff(self, from_agent: str, to_agent: str,
-                             workflow_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def validate_agent_handoff(
+        self,
+        from_agent: str,
+        to_agent: str,
+        workflow_context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """
         Validate an agent handoff before execution.
 
@@ -491,18 +506,22 @@ class AgentRegistry:
             "is_valid": True,
             "warnings": [],
             "errors": [],
-            "recommendations": []
+            "recommendations": [],
         }
 
         try:
             # Check if agents exist
             if from_agent not in self.bmad_agents:
                 validation_result["is_valid"] = False
-                validation_result["errors"].append(f"Source agent '{from_agent}' not registered")
+                validation_result["errors"].append(
+                    f"Source agent '{from_agent}' not registered"
+                )
 
             if to_agent not in self.bmad_agents:
                 validation_result["is_valid"] = False
-                validation_result["errors"].append(f"Target agent '{to_agent}' not registered")
+                validation_result["errors"].append(
+                    f"Target agent '{to_agent}' not registered"
+                )
 
             if not validation_result["is_valid"]:
                 return validation_result
@@ -518,7 +537,7 @@ class AgentRegistry:
                 "product-manager": ["architect", "product-owner"],
                 "architect": ["dev-agent", "qa-agent", "product-manager"],
                 "dev-agent": ["qa-agent", "architect", "scrum-master"],
-                "qa-agent": ["dev-agent", "architect", "product-owner"]
+                "qa-agent": ["dev-agent", "architect", "product-owner"],
             }
 
             if from_agent in compatible_handoffs:
@@ -532,8 +551,10 @@ class AgentRegistry:
 
             # Simple circular dependency check
             for handoff in recent_handoffs:
-                if (handoff.get("from_agent") == to_agent and
-                    handoff.get("to_agent") == from_agent):
+                if (
+                    handoff.get("from_agent") == to_agent
+                    and handoff.get("to_agent") == from_agent
+                ):
                     validation_result["warnings"].append(
                         f"Potential circular dependency detected: {from_agent} ↔ {to_agent}"
                     )
@@ -555,7 +576,9 @@ class AgentRegistry:
 
         return validation_result
 
-    def get_agent_handoff_history(self, agent_id: str, workflow_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_agent_handoff_history(
+        self, agent_id: str, workflow_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """
         Get handoff history for a specific agent.
 
@@ -572,7 +595,10 @@ class AgentRegistry:
             # Filter handoffs involving this agent
             agent_handoffs = []
             for handoff in all_handoffs:
-                if handoff.get("from_agent") == agent_id or handoff.get("to_agent") == agent_id:
+                if (
+                    handoff.get("from_agent") == agent_id
+                    or handoff.get("to_agent") == agent_id
+                ):
                     agent_handoffs.append(handoff)
 
             return agent_handoffs
