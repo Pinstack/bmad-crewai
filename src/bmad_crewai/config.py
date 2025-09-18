@@ -218,7 +218,8 @@ class ConfigManager:
 
     def get_api_config(self, provider: str) -> APIConfig:
         """Get API configuration for a provider."""
-        api_config = self._config["apis"].get(provider, {})
+        api_config = self._config["apis"].get(provider, {}).copy()
+        api_config.setdefault("provider", provider)
         return APIConfig(**api_config)
 
     def set_api_config(self, provider: str, config: APIConfig) -> None:

@@ -449,11 +449,107 @@ class WorkflowMetricsCollector:
         self._queue_lock = threading.Lock()
         self._shutdown_event = threading.Event()
 
-        # Start background processing thread
-        self._processing_thread = threading.Thread(
-            target=self._background_processor, daemon=True, name="metrics-processor"
-        )
-        self._processing_thread.start()
+        # Initialize thread (will be started when needed)
+        self._processing_thread = None
+
+    def _start_background_processing(self) -> None:
+        """Start the background processing thread if not already started."""
+        if self._processing_thread is None or not self._processing_thread.is_alive():
+            self._processing_thread = threading.Thread(
+                target=self._background_processor, daemon=True, name="metrics-processor"
+            )
+            self._processing_thread.start()
+
+    def _background_processor(self) -> None:
+        """Process queued analysis requests in the background."""
+        try:
+            while True:
+                request = None
+                with self._queue_lock:
+                    if self._processing_queue:
+                        request = self._processing_queue.pop(0)
+
+                if request is None:
+                    if self._shutdown_event.is_set():
+                        break
+                    time.sleep(0.05)
+                    continue
+
+                try:
+                    workflow_id = request.get("workflow_id")
+                    execution_data = request.get("execution_data", {})
+                    basic_metrics = request.get("basic_metrics", {})
+
+                    detailed = self._perform_detailed_analysis(
+                        workflow_id, execution_data, basic_metrics
+                    )
+                    self.execution_metrics[workflow_id] = detailed
+                except Exception as e:
+                    self.logger.warning(f"Metrics background processing failed: {e}")
+
+        except Exception as e:
+            self.logger.error(f"Background processor crashed: {e}")
+
+    def _perform_detailed_analysis(
+        self,
+        workflow_id: str,
+        execution_data: Dict[str, Any],
+        basic_metrics: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Compute detailed metrics from execution data."""
+        try:
+            task_results = execution_data.get("task_results", {})
+            task_metrics = (
+                self._analyze_task_performance(task_results)
+                if isinstance(task_results, dict)
+                else {
+                    "task_durations": [],
+                    "average_task_duration": 0,
+                    "task_success_rate": 0,
+                }
+            )
+
+            bottlenecks = self._identify_bottlenecks(task_metrics)
+            efficiency = self._calculate_efficiency_metrics(task_metrics)
+
+            detailed = {
+                **basic_metrics,
+                "task_metrics": task_metrics,
+                "bottlenecks": bottlenecks,
+                "efficiency_metrics": efficiency,
+            }
+
+            return detailed
+        except Exception as e:
+            self.logger.error(f"Detailed analysis failed for {workflow_id}: {e}")
+            return {**basic_metrics, "error": str(e)}
+
+    def get_aggregated_metrics(self) -> Dict[str, Any]:
+        """Aggregate metrics across all recorded workflows."""
+        try:
+            if not self.execution_metrics:
+                return {"no_data": True}
+
+            durations = [
+                m.get("duration")
+                for m in self.execution_metrics.values()
+                if m.get("duration") is not None
+            ]
+            success_rates = [
+                m.get("task_metrics", {}).get("task_success_rate", 0)
+                for m in self.execution_metrics.values()
+            ]
+
+            return {
+                "total_workflows": len(self.execution_metrics),
+                "average_duration": statistics.mean(durations) if durations else 0,
+                "average_success_rate": (
+                    statistics.mean(success_rates) if success_rates else 0
+                ),
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to aggregate metrics: {e}")
+            return {"error": str(e)}
 
     def collect_execution_metrics(
         self, workflow_id: str, execution_data: Dict[str, Any]
@@ -499,33 +595,20 @@ class WorkflowMetricsCollector:
                 ),
             }
 
-            # Store basic metrics immediately (fast)
-            self.execution_metrics[workflow_id] = basic_metrics
+            # Compute detailed metrics synchronously for immediate availability
+            detailed_metrics = self._perform_detailed_analysis(
+                workflow_id, execution_data, basic_metrics
+            )
+
+            # Store metrics
+            self.execution_metrics[workflow_id] = detailed_metrics
             if duration:
                 self.performance_history[workflow_id].append(duration)
-
-            # Queue detailed analysis for background processing (non-blocking)
-            if self._async_enabled:
-                analysis_request = {
-                    "workflow_id": workflow_id,
-                    "execution_data": execution_data,
-                    "basic_metrics": basic_metrics,
-                }
-                self._queue_analysis_request(analysis_request)
-                self.logger.debug(
-                    f"Queued detailed analysis for workflow {workflow_id}"
-                )
-            else:
-                # Fallback to synchronous processing if async is disabled
-                detailed_metrics = self._perform_detailed_analysis(
-                    workflow_id, execution_data, basic_metrics
-                )
-                self.execution_metrics[workflow_id] = detailed_metrics
 
             self.logger.info(
                 f"Collected metrics for workflow {workflow_id}: {duration:.2f}s"
             )
-            return basic_metrics
+            return detailed_metrics
 
         except Exception as e:
             self.logger.error(
@@ -592,7 +675,7 @@ class WorkflowMetricsCollector:
                         "task_index": i,
                         "duration": duration,
                         "deviation_from_average": duration - avg_duration,
-                        "severity": "high" if duration > avg_duration * 3 else "medium",
+                        "severity": "high" if duration > avg_duration * 2 else "medium",
                     }
                 )
 
@@ -612,8 +695,8 @@ class WorkflowMetricsCollector:
         std_dev = statistics.stdev(task_durations) if len(task_durations) > 1 else 0
         cv = (std_dev / mean_duration) if mean_duration > 0 else 0
 
-        # Efficiency score (higher is better): inverse of variability
-        efficiency_score = max(0, 100 - (cv * 100))
+        # Efficiency score (higher is better): inverse of variability (less aggressive scaling)
+        efficiency_score = max(0, 100 - (cv * 50))
 
         return {
             "efficiency_score": efficiency_score,
@@ -639,38 +722,12 @@ class WorkflowMetricsCollector:
             ),
         }
 
-    def get_aggregated_metrics(self) -> Dict[str, Any]:
-        """Get aggregated metrics across all workflows."""
-        if not self.execution_metrics:
-            return {"no_data": True}
-
-        all_durations = []
-        all_efficiency_scores = []
-
-        for metrics in self.execution_metrics.values():
-            if metrics.get("duration"):
-                all_durations.append(metrics["duration"])
-
-            efficiency = metrics.get("efficiency_metrics", {}).get(
-                "efficiency_score", 0
-            )
-            all_efficiency_scores.append(efficiency)
-
-        return {
-            "total_workflows": len(self.execution_metrics),
-            "average_workflow_duration": (
-                statistics.mean(all_durations) if all_durations else 0
-            ),
-            "average_efficiency_score": (
-                statistics.mean(all_efficiency_scores) if all_efficiency_scores else 0
-            ),
-            "workflow_success_rate": sum(
-                1
-                for m in self.execution_metrics.values()
-                if m.get("failed_tasks", 0) == 0
-            )
-            / len(self.execution_metrics),
-        }
+    def _queue_analysis_request(self, analysis_request: Dict[str, Any]) -> None:
+        """Queue a detailed analysis request for background processing."""
+        with self._queue_lock:
+            self._processing_queue.append(analysis_request)
+        # Ensure background processing is started
+        self._start_background_processing()
 
 
 class WorkflowOptimizer:
@@ -933,114 +990,6 @@ class WorkflowOptimizer:
             return "medium"
         else:
             return "high"
-
-    def _queue_analysis_request(self, analysis_request: Dict[str, Any]) -> None:
-        """Queue a detailed analysis request for background processing."""
-        with self._queue_lock:
-            self._processing_queue.append(analysis_request)
-
-    def _background_processor(self) -> None:
-        """Background thread for processing detailed metrics analysis."""
-        self.logger.debug("Started background metrics processor")
-
-        while not self._shutdown_event.is_set():
-            try:
-                # Check for queued requests
-                analysis_request = None
-                with self._queue_lock:
-                    if self._processing_queue:
-                        analysis_request = self._processing_queue.pop(0)
-
-                if analysis_request:
-                    # Process the request asynchronously
-                    future = self._executor.submit(
-                        self._perform_detailed_analysis,
-                        analysis_request["workflow_id"],
-                        analysis_request["execution_data"],
-                        analysis_request["basic_metrics"],
-                    )
-
-                    # Store the result when complete (non-blocking)
-                    def update_metrics(fut):
-                        try:
-                            detailed_metrics = fut.result()
-                            self.execution_metrics[analysis_request["workflow_id"]] = (
-                                detailed_metrics
-                            )
-                            self.logger.debug(
-                                f"Completed detailed analysis for {analysis_request['workflow_id']}"
-                            )
-                        except Exception as e:
-                            self.logger.error(
-                                f"Background analysis failed for {analysis_request['workflow_id']}: {e}"
-                            )
-
-                    future.add_done_callback(update_metrics)
-
-                # Sleep briefly to avoid busy waiting
-                time.sleep(0.1)
-
-            except Exception as e:
-                self.logger.error(f"Background processor error: {e}")
-                time.sleep(1)  # Longer sleep on error
-
-        self.logger.debug("Background metrics processor stopped")
-
-    def _perform_detailed_analysis(
-        self,
-        workflow_id: str,
-        execution_data: Dict[str, Any],
-        basic_metrics: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Perform detailed metrics analysis (can be computationally intensive)."""
-        try:
-            task_results = execution_data.get("task_results", {})
-
-            # Analyze task-level performance (computationally intensive)
-            task_metrics = self._analyze_task_performance(task_results)
-
-            # Identify bottlenecks (analysis intensive)
-            bottlenecks = self._identify_bottlenecks(task_metrics)
-
-            # Calculate workflow efficiency metrics (statistical analysis)
-            efficiency_metrics = self._calculate_efficiency_metrics(task_metrics)
-
-            # Combine with basic metrics
-            detailed_metrics = {
-                **basic_metrics,
-                "task_metrics": task_metrics,
-                "bottlenecks": bottlenecks,
-                "efficiency_metrics": efficiency_metrics,
-                "analysis_completed": datetime.now().isoformat(),
-            }
-
-            return detailed_metrics
-
-        except Exception as e:
-            self.logger.error(f"Detailed analysis failed for {workflow_id}: {e}")
-            # Return basic metrics if detailed analysis fails
-            return {
-                **basic_metrics,
-                "analysis_error": str(e),
-                "analysis_completed": datetime.now().isoformat(),
-            }
-
-    def shutdown(self) -> None:
-        """Shutdown the metrics collector and cleanup resources."""
-        self.logger.info("Shutting down WorkflowMetricsCollector")
-
-        # Signal shutdown
-        self._shutdown_event.set()
-        self._async_enabled = False
-
-        # Wait for processing thread to finish
-        if self._processing_thread.is_alive():
-            self._processing_thread.join(timeout=5.0)
-
-        # Shutdown executor
-        self._executor.shutdown(wait=True, timeout=5.0)
-
-        self.logger.info("WorkflowMetricsCollector shutdown complete")
 
 
 class BmadWorkflowManager:

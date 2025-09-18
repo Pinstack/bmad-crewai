@@ -1,0 +1,119 @@
+{
+  "status": "completed",
+  "current_step": "task_1: Task 2: reqs",
+  "steps_completed": [
+    0,
+    1
+  ],
+  "total_steps": 2,
+  "workflow_template": {
+    "name": "smoke-workflow",
+    "tasks": [
+      {
+        "description": "Task 1: init",
+        "agent": "scrum-master"
+      },
+      {
+        "description": "Task 2: reqs",
+        "agent": "product-manager"
+      }
+    ]
+  },
+  "agent_handoffs": [
+    {
+      "from_agent": "scrum-master",
+      "to_agent": "product-manager",
+      "timestamp": "2025-09-18T12:54:10.983470",
+      "sequence_id": 0,
+      "data": {
+        "task_index": 1,
+        "from_task": 0
+      },
+      "status": "completed"
+    }
+  ],
+  "agent_dependencies": {
+    "scrum-master": [
+      "product-manager"
+    ]
+  },
+  "execution_timeline": [
+    {
+      "type": "initialization",
+      "timestamp": "2025-09-18T12:54:10.979121",
+      "description": "Workflow smoke_test_workflow initialized"
+    },
+    {
+      "type": "task",
+      "timestamp": "2025-09-18T12:54:10.982085",
+      "task_index": 0,
+      "description": "Task 0 executed"
+    },
+    {
+      "type": "handoff",
+      "from_agent": "scrum-master",
+      "to_agent": "product-manager",
+      "timestamp": "2025-09-18T12:54:10.983470",
+      "description": "Agent handoff: scrum-master → product-manager"
+    },
+    {
+      "type": "task",
+      "timestamp": "2025-09-18T12:54:10.984798",
+      "task_index": 1,
+      "description": "Task 1 executed"
+    }
+  ],
+  "progress": {
+    "completed": 2,
+    "total": 2,
+    "percentage": 100.0,
+    "last_updated": "2025-09-18T12:54:10.984391"
+  },
+  "checkpoints": [
+    {
+      "id": "checkpoint_0",
+      "timestamp": "2025-09-18T12:54:10.980615",
+      "task_spec": {
+        "description": "Task 1: init",
+        "agent": "scrum-master"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "initialization",
+        "steps_completed": [],
+        "progress": {
+          "completed": 0,
+          "total": 2,
+          "percentage": 0.0
+        }
+      }
+    },
+    {
+      "id": "checkpoint_1",
+      "timestamp": "2025-09-18T12:54:10.982489",
+      "task_spec": {
+        "description": "Task 2: reqs",
+        "agent": "product-manager"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "task_0: Task 1: init",
+        "steps_completed": [
+          0
+        ],
+        "progress": {
+          "completed": 1,
+          "total": 2,
+          "percentage": 50.0,
+          "last_updated": "2025-09-18T12:54:10.981695"
+        }
+      }
+    }
+  ],
+  "_metadata": {
+    "workflow_id": "smoke_test_workflow",
+    "timestamp": "2025-09-18T12:54:10.985300",
+    "version": "1.0"
+  },
+  "end_time": "2025-09-18T12:54:10.985180"
+}

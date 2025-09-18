@@ -177,7 +177,7 @@ class TestCLI:
     def test_cli_initialization(self, cli):
         """Test CLI initialization."""
         assert cli.bmad is None
-        assert cli.command_handler is None
+        assert cli.command_handler is not None
 
     @pytest.mark.asyncio
     async def test_cli_context_manager(self, cli):
@@ -207,8 +207,9 @@ class TestCLI:
         with patch.object(cli.command_handler, "execute_command") as mock_execute:
             mock_execute.side_effect = Exception("Test error")
 
-            result = await cli.run_async_command({"command": "test"})
-            assert "error" in result
+            with patch("sys.exit") as mock_exit:
+                await cli.run_async_command({"command": "test"})
+                mock_exit.assert_called_once_with(1)
 
     def test_display_command_result_success(self, cli):
         """Test displaying successful command result."""
@@ -227,7 +228,7 @@ class TestCLI:
         """Test displaying help command result."""
         with patch("builtins.print") as mock_print:
             cli._display_command_result({"help": True, "usage": "Help text"})
-            mock_print.assert_called_with("Help text")
+            mock_print.assert_called_with("Usage: Help text")
 
     def test_display_workflows(self, cli):
         """Test displaying workflow results."""

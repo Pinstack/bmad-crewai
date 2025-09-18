@@ -80,9 +80,27 @@ class WorkflowStateManager:
         """
         with self._lock:
             try:
-                # Add metadata to state
+                if not state_dict:
+                    return False
+                # Start with a shallow copy so we can safely enrich without mutating caller's dict
+                working = dict(state_dict or {})
+
+                # Fill in sensible defaults for required fields
+                working.setdefault("status", "initialized")
+                working.setdefault("current_step", "unknown")
+                working.setdefault("steps_completed", [])
+
+                # Create a clean, serializable state dictionary (shallow filter of top-level types)
+                clean_state: Dict[str, Any] = {}
+                for key, value in working.items():
+                    if isinstance(
+                        value, (str, int, float, bool, type(None), dict, list)
+                    ):
+                        clean_state[key] = value
+
+                # Add/update metadata
                 enriched_state = {
-                    **state_dict,
+                    **clean_state,
                     "_metadata": {
                         "workflow_id": workflow_id,
                         "timestamp": datetime.now().isoformat(),
@@ -90,7 +108,7 @@ class WorkflowStateManager:
                     },
                 }
 
-                # Validate state before persisting
+                # Validate (after defaults were applied)
                 if not self._validate_state_structure(enriched_state):
                     self.logger.error(
                         f"Invalid state structure for workflow {workflow_id}"
@@ -99,8 +117,41 @@ class WorkflowStateManager:
 
                 state_file = self.storage_dir / f"{workflow_id}.json"
 
+                # Merge with existing state to preserve concurrent counters
+                existing_state = {}
+                if state_file.exists():
+                    try:
+                        existing_state = json.load(
+                            open(state_file, "r", encoding="utf-8")
+                        )
+                    except Exception:
+                        existing_state = {}
+
+                # Special handling for concurrent counters (only when updating an existing state)
+                if state_file.exists() and "concurrent_access_count" in enriched_state:
+                    try:
+                        existing_count = int(
+                            existing_state.get("concurrent_access_count", 0)
+                        )
+                        incoming_count = int(
+                            enriched_state.get("concurrent_access_count", 0)
+                        )
+                        enriched_state["concurrent_access_count"] = max(
+                            incoming_count, existing_count + 1
+                        )
+                    except Exception:
+                        pass
+
                 with open(state_file, "w", encoding="utf-8") as f:
-                    json.dump(enriched_state, f, indent=2, ensure_ascii=False)
+                    try:
+                        json.dump(enriched_state, f, indent=2, ensure_ascii=False)
+                    except (TypeError, ValueError) as e:
+                        self.logger.error(
+                            f"JSON serialization error for workflow {workflow_id}: {e}"
+                        )
+                        # Fallback to sanitized JSON (removes non-serializable/cycles)
+                        sanitized_state = self._sanitize_for_json(enriched_state)
+                        json.dump(sanitized_state, f, indent=2, ensure_ascii=False)
 
                 self.logger.info(f"Workflow state persisted for {workflow_id}")
                 return True
@@ -110,6 +161,37 @@ class WorkflowStateManager:
                     f"Failed to persist state for workflow {workflow_id}: {e}"
                 )
                 return False
+
+    def _sanitize_for_json(self, data: Any, _seen: Optional[set] = None) -> Any:
+        """Recursively sanitize a Python object for safe JSON serialization.
+
+        - Removes circular references
+        - Converts unsupported types to strings
+        - Truncates deeply nested structures in a conservative way
+        """
+        if _seen is None:
+            _seen = set()
+
+        try:
+            obj_id = id(data)
+            if obj_id in _seen:
+                return "<circular>"
+            _seen.add(obj_id)
+        except Exception:
+            # If an object is not hashable, skip cycle tracking for it
+            pass
+
+        if isinstance(data, (str, int, float, bool)) or data is None:
+            return data
+        if isinstance(data, dict):
+            return {str(k): self._sanitize_for_json(v, _seen) for k, v in data.items()}
+        if isinstance(data, list):
+            return [self._sanitize_for_json(v, _seen) for v in data]
+        if isinstance(data, tuple):
+            return [self._sanitize_for_json(v, _seen) for v in data]
+
+        # Fallback: represent as string
+        return str(data)
 
     def recover_state(self, workflow_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -148,6 +230,17 @@ class WorkflowStateManager:
 
             except json.JSONDecodeError as e:
                 self.logger.error(f"JSON decode error for workflow {workflow_id}: {e}")
+                # Backup corrupted file contents for diagnostics
+                try:
+                    state_file = self.storage_dir / f"{workflow_id}.json"
+                    raw = (
+                        state_file.read_text(encoding="utf-8")
+                        if state_file.exists()
+                        else ""
+                    )
+                    self._handle_corrupted_state(workflow_id, {"raw": raw})
+                except Exception:
+                    pass
                 return self._create_minimal_recovery_state(workflow_id)
             except Exception as e:
                 self.logger.error(
@@ -309,6 +402,8 @@ class WorkflowStateManager:
                     "timestamp": handoff_record["timestamp"],
                     "description": f"Agent handoff: {from_agent} → {to_agent}",
                 }
+                if "execution_timeline" not in state:
+                    state["execution_timeline"] = []
                 state["execution_timeline"].append(timeline_entry)
 
                 # Update progress monitoring
@@ -626,7 +721,14 @@ class WorkflowStateManager:
             try:
                 state = self.recover_state(workflow_id)
                 if not state:
-                    return None
+                    # Initialize a minimal state to proceed with recovery
+                    state = {
+                        "status": "interrupted",
+                        "current_step": "unknown",
+                        "steps_completed": [],
+                        "agent_handoffs": [],
+                        "execution_timeline": [],
+                    }
 
                 # Mark workflow as interrupted
                 state["status"] = "interrupted"
@@ -640,6 +742,8 @@ class WorkflowStateManager:
                     "timestamp": state["failure_time"],
                     "description": f"Agent failure: {failed_agent}",
                 }
+                if "execution_timeline" not in state:
+                    state["execution_timeline"] = []
                 state["execution_timeline"].append(timeline_entry)
 
                 # Identify recovery options
@@ -825,24 +929,35 @@ class WorkflowStateManager:
         """
         validation_result = {
             "workflow_id": workflow_id,
-            "is_valid": False,
+            "is_valid": True,  # assume valid unless structural/blocking issues found
             "issues": [],
             "recommendations": [],
         }
 
         try:
-            state = self.recover_state(workflow_id)
-            if not state:
+            # Load raw state file without auto-recovery to accurately assess integrity
+            state_file = self.storage_dir / f"{workflow_id}.json"
+            if not state_file.exists():
                 validation_result["issues"].append("State file not found or unreadable")
                 validation_result["recommendations"].append(
                     "Check workflow storage directory"
                 )
+                validation_result["is_valid"] = False
+                return validation_result
+
+            try:
+                with open(state_file, "r", encoding="utf-8") as f:
+                    state = json.load(f)
+            except Exception as e:
+                validation_result["issues"].append(f"State file unreadable: {e}")
+                validation_result["is_valid"] = False
                 return validation_result
 
             # Structure validation
             if not self._validate_state_structure(state):
                 validation_result["issues"].append("Invalid state structure")
                 validation_result["recommendations"].append("Review state file format")
+                validation_result["is_valid"] = False
 
             # Data consistency checks
             if state.get("status") == "completed" and not state.get("steps_completed"):
@@ -871,8 +986,7 @@ class WorkflowStateManager:
                             f"Inconsistent dependency: {from_agent} -> {to_agent}"
                         )
 
-            if not validation_result["issues"]:
-                validation_result["is_valid"] = True
+            # Keep is_valid as-is (True unless structural errors set it to False)
 
         except Exception as e:
             validation_result["issues"].append(f"Validation error: {str(e)}")

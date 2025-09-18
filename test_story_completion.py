@@ -8,9 +8,12 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
+import pytest
+
 from bmad_crewai import BmadCrewAI
 
 
+@pytest.mark.asyncio
 async def test_story_completion():
     """Test all story 1.0 functionality."""
     print("🔍 Testing Story 1.0 Completion")

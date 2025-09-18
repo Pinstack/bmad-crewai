@@ -41,34 +41,69 @@ class BmadAgentRegistry:
         pass
 ```
 
-### Workflow Engine
+### Workflow Engine (Modular Architecture)
+
+The workflow engine has been refactored into multiple specialized components for better maintainability and testability:
+
 ```python
 class BmadWorkflowEngine:
-    """Manages BMAD workflow execution sequence"""
+    """Main workflow orchestration coordinator"""
 
     def __init__(self, crew: Crew, template_reader: BmadTemplateReader):
         self.crew = crew
         self.template_reader = template_reader
+        self.conditional_engine = ConditionalWorkflowEngine()
+        self.error_recovery = ErrorRecoveryService()
+        self.agent_assigner = DynamicAgentAssigner()
+        self.visualizer = WorkflowVisualizer()
 
     def execute_workflow(self, workflow_template: str):
-        """Execute complete BMAD workflow"""
-        # Load template
+        """Execute complete BMAD workflow with advanced features"""
         template = self.template_reader.load_template(workflow_template)
-
-        # Register agents
         agents = BmadAgentRegistry().register_agents()
 
-        # Execute workflow sequence
         for step in template['workflow_sequence']:
-            agent = agents[step['agent']]
-            task = self.create_task_from_step(step)
-            result = self.crew.execute_task(agent, task)
+            # Advanced conditional logic
+            if not self.conditional_engine.should_execute_step(step, template):
+                continue
 
-            # Write artefact to BMAD folder
+            # Dynamic agent assignment
+            agent = self.agent_assigner.select_optimal_agent(step, agents)
+
+            # Execute with error recovery
+            result = self.error_recovery.execute_with_retry(
+                agent, step, self.crew
+            )
+
+            # Write artefact
             self.write_artefact_to_bmad_folder(result, step['output_path'])
 
-        # Enforce quality gates
+        # Quality gate validation
         self.validate_quality_gates(template['quality_gates'])
+
+class ConditionalWorkflowEngine:
+    """Handles complex conditional workflow logic"""
+
+    def should_execute_step(self, step: dict, context: dict) -> bool:
+        """Evaluate conditions for step execution"""
+        # Implementation of conditional logic
+        pass
+
+class ErrorRecoveryService:
+    """Manages error recovery and retry mechanisms"""
+
+    def execute_with_retry(self, agent, step: dict, crew: Crew):
+        """Execute task with comprehensive error recovery"""
+        # Implementation of retry logic and error handling
+        pass
+
+class DynamicAgentAssigner:
+    """Intelligent agent selection based on context and performance"""
+
+    def select_optimal_agent(self, step: dict, available_agents: dict):
+        """Select best agent based on capabilities and load"""
+        # Implementation of agent selection logic
+        pass
 ```
 
 ### Artefact Writer

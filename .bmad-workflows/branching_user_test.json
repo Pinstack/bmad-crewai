@@ -1,0 +1,220 @@
+{
+  "status": "completed",
+  "current_step": "task_3: Send welcome email",
+  "steps_completed": [
+    0,
+    1,
+    3
+  ],
+  "total_steps": 4,
+  "workflow_template": {
+    "tasks": [
+      {
+        "description": "Evaluate user access level",
+        "agent": "qa-agent"
+      },
+      {
+        "description": "Grant admin permissions",
+        "agent": "dev-agent",
+        "condition": {
+          "type": "context_check",
+          "key": "user_level",
+          "operator": "equals",
+          "value": "admin"
+        }
+      },
+      {
+        "description": "Grant user permissions",
+        "agent": "dev-agent",
+        "condition": {
+          "type": "context_check",
+          "key": "user_level",
+          "operator": "equals",
+          "value": "user"
+        }
+      },
+      {
+        "description": "Send welcome email",
+        "agent": "dev-agent"
+      }
+    ]
+  },
+  "agent_handoffs": [
+    {
+      "from_agent": "qa-agent",
+      "to_agent": "dev-agent",
+      "timestamp": "2025-09-18T12:57:08.518364",
+      "sequence_id": 0,
+      "data": {
+        "task_index": 1,
+        "from_task": 0
+      },
+      "status": "completed"
+    }
+  ],
+  "agent_dependencies": {
+    "qa-agent": [
+      "dev-agent"
+    ]
+  },
+  "execution_timeline": [
+    {
+      "type": "initialization",
+      "timestamp": "2025-09-18T12:57:08.516305",
+      "description": "Conditional workflow branching_user_test initialized"
+    },
+    {
+      "type": "handoff",
+      "from_agent": "qa-agent",
+      "to_agent": "dev-agent",
+      "timestamp": "2025-09-18T12:57:08.518364",
+      "description": "Agent handoff: qa-agent → dev-agent"
+    }
+  ],
+  "progress": {
+    "completed": 4,
+    "total": 4,
+    "percentage": 100.0,
+    "last_updated": "2025-09-18T12:57:08.520215"
+  },
+  "checkpoints": [
+    {
+      "id": "checkpoint_0",
+      "timestamp": "2025-09-18T12:57:08.516982",
+      "task_spec": {
+        "description": "Evaluate user access level",
+        "agent": "qa-agent"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "initialization",
+        "steps_completed": [],
+        "progress": {
+          "completed": 0,
+          "total": 4,
+          "percentage": 0.0
+        }
+      }
+    },
+    {
+      "id": "checkpoint_1",
+      "timestamp": "2025-09-18T12:57:08.517866",
+      "task_spec": {
+        "description": "Grant admin permissions",
+        "agent": "dev-agent",
+        "condition": {
+          "type": "context_check",
+          "key": "user_level",
+          "operator": "equals",
+          "value": "admin"
+        }
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "task_0: Evaluate user access level",
+        "steps_completed": [
+          0
+        ],
+        "progress": {
+          "completed": 1,
+          "total": 4,
+          "percentage": 25.0,
+          "last_updated": "2025-09-18T12:57:08.517671"
+        }
+      }
+    },
+    {
+      "id": "checkpoint_3",
+      "timestamp": "2025-09-18T12:57:08.519238",
+      "task_spec": {
+        "description": "Send welcome email",
+        "agent": "dev-agent"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "task_1: Grant admin permissions",
+        "steps_completed": [
+          0,
+          1
+        ],
+        "progress": {
+          "completed": 2,
+          "total": 4,
+          "percentage": 50.0,
+          "last_updated": "2025-09-18T12:57:08.518879"
+        }
+      }
+    }
+  ],
+  "conditional_context": {
+    "user_level": "user"
+  },
+  "conditional_decisions": [],
+  "error_recovery_attempts": [],
+  "_metadata": {
+    "workflow_id": "branching_user_test",
+    "timestamp": "2025-09-18T12:57:08.520457",
+    "version": "1.0"
+  },
+  "end_time": "2025-09-18T12:57:08.520452",
+  "result": {
+    "status": "success",
+    "workflow_id": "branching_user_test",
+    "task_results": [
+      {
+        "task_index": 0,
+        "agent": "qa-agent",
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.517387",
+        "advanced_recovery": true,
+        "message": "Task simulated for agent qa-agent",
+        "simulated": true,
+        "attempt": 1,
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [],
+          "skipped": [
+            "No output specification in task"
+          ]
+        }
+      },
+      {
+        "task_index": 1,
+        "agent": "dev-agent",
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.518242",
+        "advanced_recovery": true,
+        "message": "Task simulated for agent dev-agent",
+        "simulated": true,
+        "attempt": 1,
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [],
+          "skipped": [
+            "No output specification in task"
+          ]
+        }
+      },
+      {
+        "task_index": 3,
+        "agent": "dev-agent",
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.519785",
+        "advanced_recovery": true,
+        "message": "Task simulated for agent dev-agent",
+        "simulated": true,
+        "attempt": 1,
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [],
+          "skipped": [
+            "No output specification in task"
+          ]
+        }
+      }
+    ],
+    "checkpoints": [],
+    "conditional_decisions": [],
+    "recovery_actions": []
+  }
+}

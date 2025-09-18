@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 class DevelopmentTester:
     """Tester for development environment capabilities."""
 
+    def __init__(self):
+        # Ensure an instance logger exists (module-level logger is not on self)
+        self.logger = logging.getLogger(__name__)
+
     def test_development_environment(self) -> Dict[str, Any]:
         """Test development environment configuration and capabilities.
 

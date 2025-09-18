@@ -8,7 +8,7 @@ for the BMAD framework, including Mermaid diagram generation and real-time metri
 import logging
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from .exceptions import BmadCrewAIError
 
@@ -242,6 +242,51 @@ class WorkflowVisualizer:
         )
 
         return "\n".join(lines)
+
+    def _resolve_branch_target(
+        self, target: Union[int, str], current_index: int, total_tasks: int
+    ) -> Optional[int]:
+        """
+        Resolve a branch target to a task index.
+
+        Args:
+            target: Target specification (index, task reference, or special value)
+            current_index: Current task index
+            total_tasks: Total number of tasks
+
+        Returns:
+            Resolved task index or None if invalid
+        """
+        if isinstance(target, int):
+            # Direct index
+            if 0 <= target < total_tasks:
+                return target
+            else:
+                return None
+        elif isinstance(target, str):
+            if target.startswith("task_"):
+                # Task reference like "task_2"
+                try:
+                    task_index = int(target.split("_")[1])
+                    if 0 <= task_index < total_tasks:
+                        return task_index
+                    else:
+                        return None
+                except (ValueError, IndexError):
+                    return None
+            elif target == "next":
+                # Next task
+                next_index = current_index + 1
+                return next_index if next_index < total_tasks else None
+            elif target == "end":
+                # End of workflow
+                return None
+            else:
+                # Invalid string target
+                return None
+        else:
+            # Invalid target type
+            return None
 
     def _generate_json_visualization(
         self,
@@ -490,9 +535,26 @@ class WorkflowVisualizer:
 
         try:
             metrics = self.metrics_store.get(workflow_id, {})
-            error_metrics = metrics.get("error_metrics", {})
+
+            # Check task completion first so critical alerts appear first
+            task_metrics = metrics.get("task_metrics", {})
+            if (
+                isinstance(task_metrics, dict)
+                and "completion_rate" in task_metrics
+                and task_metrics.get("completion_rate", 1.0) < 0.5
+            ):
+                alerts.append(
+                    {
+                        "type": "error",
+                        "message": "Low task completion rate",
+                        "severity": "high",
+                        "metric": "completion_rate",
+                        "value": task_metrics.get("completion_rate", 0),
+                    }
+                )
 
             # Check error rates
+            error_metrics = metrics.get("error_metrics", {})
             if error_metrics.get("recovery_success_rate", 0) < 0.8:
                 alerts.append(
                     {
@@ -501,19 +563,6 @@ class WorkflowVisualizer:
                         "severity": "medium",
                         "metric": "recovery_success_rate",
                         "value": error_metrics.get("recovery_success_rate", 0),
-                    }
-                )
-
-            # Check task completion
-            task_metrics = metrics.get("task_metrics", {})
-            if task_metrics.get("completion_rate", 0) < 0.5:
-                alerts.append(
-                    {
-                        "type": "error",
-                        "message": "Low task completion rate",
-                        "severity": "high",
-                        "metric": "completion_rate",
-                        "value": task_metrics.get("completion_rate", 0),
                     }
                 )
 
@@ -538,7 +587,7 @@ class WorkflowVisualizer:
 
             if performance_metrics.get("throughput", 0) < 0.1:
                 recommendations.append(
-                    "Workflow execution is slow; consider parallelizing independent tasks"
+                    "Throughput is low; consider parallelizing independent tasks to improve throughput"
                 )
 
             # Agent recommendations

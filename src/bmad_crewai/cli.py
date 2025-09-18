@@ -243,9 +243,16 @@ class CLICommandHandler:
         if workflow_id:
             # Get specific workflow status
             status = self.workflow_tracker.get_workflow_status(workflow_id)
+            if isinstance(status, dict):
+                status_value = status.get("status")
+            elif hasattr(status, "value"):
+                status_value = status.value
+            else:
+                status_value = str(status)
+
             return {
                 "workflow_id": workflow_id,
-                "status": status.value if hasattr(status, "value") else str(status),
+                "status": status_value,
                 "details": self.workflow_tracker.get_workflow_details(workflow_id),
             }
         else:
@@ -561,22 +568,27 @@ class CLI:
 
     def __init__(self):
         self.bmad = None
-        self.command_handler = None
+        self.command_handler = CLICommandHandler(self)
 
     async def __aenter__(self):
         """Async context manager entry."""
         self.bmad = BmadCrewAI()
-        self.command_handler = CLICommandHandler(self)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
         if self.bmad:
             await self.bmad.close()
+        self.bmad = None
+        self.command_handler = None
 
     def run(self):
         """Run the CLI with enhanced command parsing."""
-        if len(sys.argv) < 2:
+        # In embedded/test contexts, sys.argv may include unrelated flags (e.g., pytest)
+        # Treat as no-args unless explicitly invoked as our CLI entrypoint
+        if len(sys.argv) < 2 or not str(sys.argv[0]).endswith(
+            ("bmad-crewai", "bmad-simple")
+        ):
             self.print_help()
             return
 
@@ -612,7 +624,9 @@ class CLI:
 
     def _display_command_result(self, result: Dict[str, Any]):
         """Display command execution results in user-friendly format."""
-        if result.get("success"):
+        if result.get("error"):
+            print(f"❌ Error: {result['error']}")
+        elif result.get("success"):
             print("✅ Success!")
             if "message" in result:
                 print(result["message"])

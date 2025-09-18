@@ -1,0 +1,414 @@
+{
+  "status": "completed",
+  "current_step": "task_9: Task 9",
+  "steps_completed": [],
+  "total_steps": 10,
+  "workflow_template": {
+    "tasks": [
+      {
+        "description": "Task 0",
+        "agent": "dev-agent"
+      },
+      {
+        "description": "Task 1",
+        "agent": "qa-agent"
+      },
+      {
+        "description": "Task 2",
+        "agent": "architect"
+      },
+      {
+        "description": "Task 3",
+        "agent": "dev-agent"
+      },
+      {
+        "description": "Task 4",
+        "agent": "qa-agent"
+      },
+      {
+        "description": "Task 5",
+        "agent": "architect"
+      },
+      {
+        "description": "Task 6",
+        "agent": "dev-agent"
+      },
+      {
+        "description": "Task 7",
+        "agent": "qa-agent"
+      },
+      {
+        "description": "Task 8",
+        "agent": "architect"
+      },
+      {
+        "description": "Task 9",
+        "agent": "dev-agent"
+      }
+    ]
+  },
+  "agent_handoffs": [],
+  "agent_dependencies": {},
+  "execution_timeline": [
+    {
+      "type": "initialization",
+      "timestamp": "2025-09-18T12:57:08.650422",
+      "description": "Conditional workflow performance_test initialized"
+    }
+  ],
+  "progress": {
+    "completed": 10,
+    "total": 10,
+    "percentage": 100.0,
+    "last_updated": "2025-09-18T12:57:08.659307"
+  },
+  "checkpoints": [
+    {
+      "id": "checkpoint_0",
+      "timestamp": "2025-09-18T12:57:08.650859",
+      "task_spec": {
+        "description": "Task 0",
+        "agent": "dev-agent"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "initialization",
+        "steps_completed": [],
+        "progress": {
+          "completed": 0,
+          "total": 10,
+          "percentage": 0.0
+        }
+      }
+    },
+    {
+      "id": "checkpoint_1",
+      "timestamp": "2025-09-18T12:57:08.651486",
+      "task_spec": {
+        "description": "Task 1",
+        "agent": "qa-agent"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "task_0: Task 0",
+        "steps_completed": [],
+        "progress": {
+          "completed": 1,
+          "total": 10,
+          "percentage": 10.0,
+          "last_updated": "2025-09-18T12:57:08.651289"
+        }
+      }
+    },
+    {
+      "id": "checkpoint_2",
+      "timestamp": "2025-09-18T12:57:08.652139",
+      "task_spec": {
+        "description": "Task 2",
+        "agent": "architect"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "task_1: Task 1",
+        "steps_completed": [],
+        "progress": {
+          "completed": 2,
+          "total": 10,
+          "percentage": 20.0,
+          "last_updated": "2025-09-18T12:57:08.651916"
+        }
+      }
+    },
+    {
+      "id": "checkpoint_3",
+      "timestamp": "2025-09-18T12:57:08.652699",
+      "task_spec": {
+        "description": "Task 3",
+        "agent": "dev-agent"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "task_2: Task 2",
+        "steps_completed": [],
+        "progress": {
+          "completed": 3,
+          "total": 10,
+          "percentage": 30.0,
+          "last_updated": "2025-09-18T12:57:08.652520"
+        }
+      }
+    },
+    {
+      "id": "checkpoint_4",
+      "timestamp": "2025-09-18T12:57:08.653803",
+      "task_spec": {
+        "description": "Task 4",
+        "agent": "qa-agent"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "task_3: Task 3",
+        "steps_completed": [],
+        "progress": {
+          "completed": 4,
+          "total": 10,
+          "percentage": 40.0,
+          "last_updated": "2025-09-18T12:57:08.653214"
+        }
+      }
+    },
+    {
+      "id": "checkpoint_5",
+      "timestamp": "2025-09-18T12:57:08.655320",
+      "task_spec": {
+        "description": "Task 5",
+        "agent": "architect"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "task_4: Task 4",
+        "steps_completed": [],
+        "progress": {
+          "completed": 5,
+          "total": 10,
+          "percentage": 50.0,
+          "last_updated": "2025-09-18T12:57:08.654635"
+        }
+      }
+    },
+    {
+      "id": "checkpoint_6",
+      "timestamp": "2025-09-18T12:57:08.656228",
+      "task_spec": {
+        "description": "Task 6",
+        "agent": "dev-agent"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "task_5: Task 5",
+        "steps_completed": [],
+        "progress": {
+          "completed": 6,
+          "total": 10,
+          "percentage": 60.0,
+          "last_updated": "2025-09-18T12:57:08.655924"
+        }
+      }
+    },
+    {
+      "id": "checkpoint_7",
+      "timestamp": "2025-09-18T12:57:08.657052",
+      "task_spec": {
+        "description": "Task 7",
+        "agent": "qa-agent"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "task_6: Task 6",
+        "steps_completed": [],
+        "progress": {
+          "completed": 7,
+          "total": 10,
+          "percentage": 70.0,
+          "last_updated": "2025-09-18T12:57:08.656791"
+        }
+      }
+    },
+    {
+      "id": "checkpoint_8",
+      "timestamp": "2025-09-18T12:57:08.657895",
+      "task_spec": {
+        "description": "Task 8",
+        "agent": "architect"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "task_7: Task 7",
+        "steps_completed": [],
+        "progress": {
+          "completed": 8,
+          "total": 10,
+          "percentage": 80.0,
+          "last_updated": "2025-09-18T12:57:08.657629"
+        }
+      }
+    },
+    {
+      "id": "checkpoint_9",
+      "timestamp": "2025-09-18T12:57:08.658727",
+      "task_spec": {
+        "description": "Task 9",
+        "agent": "dev-agent"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "task_8: Task 8",
+        "steps_completed": [],
+        "progress": {
+          "completed": 9,
+          "total": 10,
+          "percentage": 90.0,
+          "last_updated": "2025-09-18T12:57:08.658448"
+        }
+      }
+    }
+  ],
+  "conditional_context": {},
+  "conditional_decisions": [],
+  "error_recovery_attempts": [],
+  "_metadata": {
+    "workflow_id": "performance_test",
+    "timestamp": "2025-09-18T12:57:08.659599",
+    "version": "1.0"
+  },
+  "end_time": "2025-09-18T12:57:08.659594",
+  "result": {
+    "status": "success",
+    "workflow_id": "performance_test",
+    "task_results": [
+      {
+        "task_index": 0,
+        "agent": "dev-agent",
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.651229",
+        "advanced_recovery": true,
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [],
+          "skipped": [
+            "No output specification in task"
+          ]
+        }
+      },
+      {
+        "task_index": 1,
+        "agent": "qa-agent",
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.651869",
+        "advanced_recovery": true,
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [],
+          "skipped": [
+            "No output specification in task"
+          ]
+        }
+      },
+      {
+        "task_index": 2,
+        "agent": "architect",
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.652481",
+        "advanced_recovery": true,
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [],
+          "skipped": [
+            "No output specification in task"
+          ]
+        }
+      },
+      {
+        "task_index": 3,
+        "agent": "dev-agent",
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.653161",
+        "advanced_recovery": true,
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [],
+          "skipped": [
+            "No output specification in task"
+          ]
+        }
+      },
+      {
+        "task_index": 4,
+        "agent": "qa-agent",
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.654536",
+        "advanced_recovery": true,
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [],
+          "skipped": [
+            "No output specification in task"
+          ]
+        }
+      },
+      {
+        "task_index": 5,
+        "agent": "architect",
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.655874",
+        "advanced_recovery": true,
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [],
+          "skipped": [
+            "No output specification in task"
+          ]
+        }
+      },
+      {
+        "task_index": 6,
+        "agent": "dev-agent",
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.656706",
+        "advanced_recovery": true,
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [],
+          "skipped": [
+            "No output specification in task"
+          ]
+        }
+      },
+      {
+        "task_index": 7,
+        "agent": "qa-agent",
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.657581",
+        "advanced_recovery": true,
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [],
+          "skipped": [
+            "No output specification in task"
+          ]
+        }
+      },
+      {
+        "task_index": 8,
+        "agent": "architect",
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.658402",
+        "advanced_recovery": true,
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [],
+          "skipped": [
+            "No output specification in task"
+          ]
+        }
+      },
+      {
+        "task_index": 9,
+        "agent": "dev-agent",
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.659262",
+        "advanced_recovery": true,
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [],
+          "skipped": [
+            "No output specification in task"
+          ]
+        }
+      }
+    ],
+    "checkpoints": [],
+    "conditional_decisions": [],
+    "recovery_actions": []
+  }
+}

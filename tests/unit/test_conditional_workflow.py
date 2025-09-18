@@ -117,12 +117,12 @@ class TestConditionalWorkflow(unittest.TestCase):
 
         # Test with dependency available in context
         context = {"database": True}
-        result = self.engine._evaluate_dependency_condition(condition, results)
+        result = self.engine._evaluate_dependency_condition(condition, results, context)
         self.assertTrue(result)
 
         # Test with dependency not available
         context = {}
-        result = self.engine._evaluate_dependency_condition(condition, results)
+        result = self.engine._evaluate_dependency_condition(condition, results, context)
         self.assertFalse(result)
 
     def test_resolve_branch_target_by_index(self):

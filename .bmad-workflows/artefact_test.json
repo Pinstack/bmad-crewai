@@ -1,0 +1,100 @@
+{
+  "status": "completed",
+  "current_step": "task_0: Generate API documentation",
+  "steps_completed": [],
+  "total_steps": 1,
+  "workflow_template": {
+    "tasks": [
+      {
+        "description": "Generate API documentation",
+        "agent": "dev-agent",
+        "output": {
+          "artefact_type": "documentation",
+          "content_template": "# API Documentation\n\nGenerated: {{timestamp}}\n\nStatus: {{status}}",
+          "params": {
+            "format": "markdown"
+          }
+        }
+      }
+    ]
+  },
+  "agent_handoffs": [],
+  "agent_dependencies": {},
+  "execution_timeline": [
+    {
+      "type": "initialization",
+      "timestamp": "2025-09-18T12:57:08.506778",
+      "description": "Conditional workflow artefact_test initialized"
+    }
+  ],
+  "progress": {
+    "completed": 1,
+    "total": 1,
+    "percentage": 100.0,
+    "last_updated": "2025-09-18T12:57:08.509103"
+  },
+  "checkpoints": [
+    {
+      "id": "checkpoint_0",
+      "timestamp": "2025-09-18T12:57:08.508038",
+      "task_spec": {
+        "description": "Generate API documentation",
+        "agent": "dev-agent",
+        "output": {
+          "artefact_type": "documentation",
+          "content_template": "# API Documentation\n\nGenerated: {{timestamp}}\n\nStatus: {{status}}",
+          "params": {
+            "format": "markdown"
+          }
+        }
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "initialization",
+        "steps_completed": [],
+        "progress": {
+          "completed": 0,
+          "total": 1,
+          "percentage": 0.0
+        }
+      }
+    }
+  ],
+  "conditional_context": {},
+  "conditional_decisions": [],
+  "error_recovery_attempts": [],
+  "_metadata": {
+    "workflow_id": "artefact_test",
+    "timestamp": "2025-09-18T12:57:08.509430",
+    "version": "1.0"
+  },
+  "end_time": "2025-09-18T12:57:08.509423",
+  "result": {
+    "status": "success",
+    "workflow_id": "artefact_test",
+    "task_results": [
+      {
+        "task_index": 0,
+        "agent": "dev-agent",
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.508977",
+        "advanced_recovery": true,
+        "message": "Documentation generated",
+        "artefacts_generated": {
+          "generated": [
+            {
+              "type": "documentation",
+              "workflow_id": "artefact_test",
+              "task_index": 0
+            }
+          ],
+          "failed": [],
+          "skipped": []
+        }
+      }
+    ],
+    "checkpoints": [],
+    "conditional_decisions": [],
+    "recovery_actions": []
+  }
+}

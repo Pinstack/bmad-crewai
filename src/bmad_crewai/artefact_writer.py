@@ -243,15 +243,24 @@ class BMADArtefactWriter:
                     results["cross_references"].append(f"References: {ref}")
 
             elif artefact_type == "qa_gates":
-                # Check for required gate fields
-                required_fields = ["schema:", "story:", "gate:"]
-                content_lower = content.lower()
-                for field in required_fields:
-                    if field not in content_lower:
+                # Handle YAML (dict) content for gates
+                required_fields = ["schema", "story", "gate"]
+                if isinstance(content, dict):
+                    missing = [fld for fld in required_fields if fld not in content]
+                    if missing:
                         results["issues"].append(
-                            f"Missing required gate field: {field}"
+                            f"Missing required gate fields: {', '.join(missing)}"
                         )
                         results["consistent"] = False
+                else:
+                    # String content fallback
+                    content_lower = str(content).lower()
+                    for field in [f + ":" for f in required_fields]:
+                        if field not in content_lower:
+                            results["issues"].append(
+                                f"Missing required gate field: {field}"
+                            )
+                            results["consistent"] = False
 
             # Track this artefact's metadata
             self.track_artefact_metadata(
@@ -259,7 +268,9 @@ class BMADArtefactWriter:
                 filename,
                 {
                     "content_length": len(content),
-                    "sections_count": content.count("##"),
+                    "sections_count": (
+                        content.count("##") if isinstance(content, str) else 0
+                    ),
                     "references_count": len(results["cross_references"]),
                 },
             )
@@ -695,6 +706,12 @@ class BMADArtefactWriter:
 
             if success:
                 # Track metadata on successful write
+                # Compute a safe content hash even for dict content
+                try:
+                    content_hash = hash(content)
+                except Exception:
+                    content_hash = hash(str(content))
+
                 self.track_artefact_metadata(
                     artefact_type,
                     filename,
@@ -702,7 +719,7 @@ class BMADArtefactWriter:
                         "naming_conventions": naming_validation["conventions_applied"],
                         "consistency_check": consistency_validation["consistent"],
                         "cross_references": consistency_validation["cross_references"],
-                        "content_hash": hash(content),  # Basic content tracking
+                        "content_hash": content_hash,  # Basic content tracking
                     },
                 )
 

@@ -253,7 +253,7 @@ class TestBmadArtefactGenerator:
         """Test artefact content processing."""
         content = "Test content"
         processed = self.generator._process_content(ArtefactType.STORIES, content)
-        assert processed == content  # Basic processing
+        assert "## Status: Draft" in processed  # Stories get status header added
 
     def test_generate_artefact_status_processing(self):
         """Test story status processing."""

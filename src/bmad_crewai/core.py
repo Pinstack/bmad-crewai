@@ -3,11 +3,13 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 import aiohttp
 import yaml
+from dotenv import load_dotenv
 
 from .agent_registry import AgentRegistry
 from .agent_wrappers import BmadAgentRegistry
@@ -33,6 +35,9 @@ class BmadCrewAI:
     """Main BMAD CrewAI integration class."""
 
     def __init__(self, config_file: Optional[str] = None):
+        # Load environment variables from .env file
+        load_dotenv()
+
         # Initialize logger first
         self.logger = logging.getLogger(__name__)
 
@@ -975,15 +980,15 @@ class SystemHealthMonitor:
                     "disk_usage",
                     "error_rate",
                 ]:
-                    if value > threshold:
+                    if value >= threshold:
                         alert_triggered = True
                         severity = "critical" if value > threshold * 1.2 else "warning"
                 elif metric_name == "response_time":
-                    if value > threshold:
+                    if value >= threshold:
                         alert_triggered = True
                         severity = "critical" if value > threshold * 1.5 else "warning"
                 elif metric_name == "availability":
-                    if value < threshold:
+                    if value <= threshold:
                         alert_triggered = True
                         severity = "critical" if value < threshold * 0.95 else "warning"
 

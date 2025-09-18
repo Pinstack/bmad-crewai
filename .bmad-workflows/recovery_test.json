@@ -1,0 +1,111 @@
+{
+  "status": "completed",
+  "current_step": "task_0: Generate user report",
+  "steps_completed": [],
+  "total_steps": 1,
+  "workflow_template": {
+    "tasks": [
+      {
+        "description": "Generate user report",
+        "agent": "dev-agent",
+        "retry": {
+          "max_attempts": 2,
+          "backoff_seconds": 0.1
+        },
+        "output": {
+          "artefact_type": "report",
+          "content_template": "User Report: {{task_message}}",
+          "params": {
+            "format": "json"
+          }
+        }
+      }
+    ]
+  },
+  "agent_handoffs": [],
+  "agent_dependencies": {},
+  "execution_timeline": [
+    {
+      "type": "initialization",
+      "timestamp": "2025-09-18T12:57:08.529868",
+      "description": "Conditional workflow recovery_test initialized"
+    }
+  ],
+  "progress": {
+    "completed": 1,
+    "total": 1,
+    "percentage": 100.0,
+    "last_updated": "2025-09-18T12:57:08.637200"
+  },
+  "checkpoints": [
+    {
+      "id": "checkpoint_0",
+      "timestamp": "2025-09-18T12:57:08.530218",
+      "task_spec": {
+        "description": "Generate user report",
+        "agent": "dev-agent",
+        "retry": {
+          "max_attempts": 2,
+          "backoff_seconds": 0.1
+        },
+        "output": {
+          "artefact_type": "report",
+          "content_template": "User Report: {{task_message}}",
+          "params": {
+            "format": "json"
+          }
+        }
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "initialization",
+        "steps_completed": [],
+        "progress": {
+          "completed": 0,
+          "total": 1,
+          "percentage": 0.0
+        }
+      }
+    }
+  ],
+  "conditional_context": {},
+  "conditional_decisions": [],
+  "error_recovery_attempts": [],
+  "_metadata": {
+    "workflow_id": "recovery_test",
+    "timestamp": "2025-09-18T12:57:08.638458",
+    "version": "1.0"
+  },
+  "end_time": "2025-09-18T12:57:08.638450",
+  "result": {
+    "status": "success",
+    "workflow_id": "recovery_test",
+    "task_results": [
+      {
+        "task_index": 0,
+        "agent": "dev-agent",
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.530572",
+        "recovery_attempts": 1,
+        "advanced_recovery": true,
+        "error": "Network timeout",
+        "attempt": 2,
+        "message": "Report generated successfully",
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [
+            {
+              "type": "report",
+              "reason": "Artefact generation failed"
+            }
+          ],
+          "skipped": []
+        },
+        "recovered": true
+      }
+    ],
+    "checkpoints": [],
+    "conditional_decisions": [],
+    "recovery_actions": []
+  }
+}

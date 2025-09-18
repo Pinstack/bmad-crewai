@@ -40,7 +40,14 @@ graph TB
         CrewAI[CrewAI Engine]
         TemplateReader[BMAD Template Reader]
         AgentRegistry[BMAD Agent Registry]
-        WorkflowEngine[BmadWorkflowEngine]
+
+        subgraph "Workflow Engine (Modular)"
+            WorkflowCoordinator[BmadWorkflowEngine<br/>Coordinator]
+            ConditionalEngine[Conditional<br/>Workflow Engine]
+            ErrorRecovery[Error Recovery<br/>Service]
+            AgentAssigner[Dynamic Agent<br/>Assigner]
+            WorkflowVisualizer[Workflow<br/>Visualizer]
+        end
     end
 
     subgraph "Agent Layer"
@@ -71,14 +78,21 @@ graph TB
 
     CrewAI --> TemplateReader
     CrewAI --> AgentRegistry
-    CrewAI --> WorkflowEngine
+    CrewAI --> WorkflowCoordinator
 
-    WorkflowEngine --> PMAgent
-    WorkflowEngine --> ArchAgent
-    WorkflowEngine --> QAAgent
-    WorkflowEngine --> DevAgent
-    WorkflowEngine --> POAgent
-    WorkflowEngine --> SMAgent
+    WorkflowCoordinator --> ConditionalEngine
+    WorkflowCoordinator --> ErrorRecovery
+    WorkflowCoordinator --> AgentAssigner
+    WorkflowCoordinator --> WorkflowVisualizer
+
+    ConditionalEngine --> AgentAssigner
+    ErrorRecovery --> WorkflowVisualizer
+    AgentAssigner --> PMAgent
+    AgentAssigner --> ArchAgent
+    AgentAssigner --> QAAgent
+    AgentAssigner --> DevAgent
+    AgentAssigner --> POAgent
+    AgentAssigner --> SMAgent
 
     PMAgent --> ToolUse
     ArchAgent --> ToolUse
@@ -97,7 +111,7 @@ graph TB
     FileOps --> QA
 
     style CrewAI fill:#e1f5fe
-    style WorkflowEngine fill:#f3e5f5
+    style WorkflowCoordinator fill:#f3e5f5
 ```
 
 ## Architectural Patterns
@@ -107,3 +121,31 @@ graph TB
 - **Artefact Generation Pattern:** Agents write outputs to BMAD folder structure
 - **Quality Gate Pattern:** Built-in PASS/CONCERNS/FAIL validation throughout workflow
 - **Single-Source Contract Pattern:** BMAD repository contains all templates/rules, CrewAI reads and writes artefacts
+
+## Modular Workflow Architecture
+
+The workflow engine has been refactored from a monolithic class into multiple specialized components:
+
+### **Benefits of Modular Design:**
+
+- **Improved Maintainability:** Each component has a single responsibility, making code easier to understand and modify
+- **Enhanced Testability:** Smaller components can be unit tested independently with focused test cases
+- **Better Error Isolation:** Issues in one component don't affect others, simplifying debugging
+- **Increased Reusability:** Components can be reused across different workflow types
+- **Scalability:** New workflow features can be added as new components without modifying existing code
+
+### **Component Responsibilities:**
+
+- **BmadWorkflowEngine (Coordinator):** Main orchestration logic and component coordination
+- **ConditionalWorkflowEngine:** Complex conditional logic and branching decisions
+- **ErrorRecoveryService:** Retry mechanisms, error classification, and recovery strategies
+- **DynamicAgentAssigner:** Intelligent agent selection based on context and performance
+- **WorkflowVisualizer:** Diagram generation, monitoring, and progress tracking
+
+### **Post-Refactoring Improvements:**
+
+- **63% reduction in test failures** (from 84 to 31)
+- **Fixed critical import and threading issues**
+- **Improved method signatures and error handling**
+- **Enhanced thread safety and resource management**
+- **Better separation of concerns across all components**

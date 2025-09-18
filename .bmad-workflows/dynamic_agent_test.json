@@ -1,0 +1,158 @@
+{
+  "status": "completed",
+  "current_step": "task_2: Test the implemented feature",
+  "steps_completed": [],
+  "total_steps": 3,
+  "workflow_template": {
+    "tasks": [
+      {
+        "description": "Design new feature architecture",
+        "complexity": "high"
+      },
+      {
+        "description": "Implement the designed feature",
+        "complexity": "medium"
+      },
+      {
+        "description": "Test the implemented feature",
+        "complexity": "medium"
+      }
+    ]
+  },
+  "agent_handoffs": [],
+  "agent_dependencies": {},
+  "execution_timeline": [
+    {
+      "type": "initialization",
+      "timestamp": "2025-09-18T12:57:08.527090",
+      "description": "Conditional workflow dynamic_agent_test initialized"
+    }
+  ],
+  "progress": {
+    "completed": 3,
+    "total": 3,
+    "percentage": 100.0,
+    "last_updated": "2025-09-18T12:57:08.528851"
+  },
+  "checkpoints": [
+    {
+      "id": "checkpoint_0",
+      "timestamp": "2025-09-18T12:57:08.527546",
+      "task_spec": {
+        "description": "Design new feature architecture",
+        "complexity": "high",
+        "assigned_agent": "architect"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "initialization",
+        "steps_completed": [],
+        "progress": {
+          "completed": 0,
+          "total": 3,
+          "percentage": 0.0
+        }
+      }
+    },
+    {
+      "id": "checkpoint_1",
+      "timestamp": "2025-09-18T12:57:08.528036",
+      "task_spec": {
+        "description": "Implement the designed feature",
+        "complexity": "medium",
+        "assigned_agent": "dev-agent"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "task_0: Design new feature architecture",
+        "steps_completed": [],
+        "progress": {
+          "completed": 1,
+          "total": 3,
+          "percentage": 33.33,
+          "last_updated": "2025-09-18T12:57:08.527855"
+        }
+      }
+    },
+    {
+      "id": "checkpoint_2",
+      "timestamp": "2025-09-18T12:57:08.528510",
+      "task_spec": {
+        "description": "Test the implemented feature",
+        "complexity": "medium",
+        "assigned_agent": "qa-agent"
+      },
+      "state_snapshot": {
+        "status": "initialized",
+        "current_step": "task_1: Implement the designed feature",
+        "steps_completed": [],
+        "progress": {
+          "completed": 2,
+          "total": 3,
+          "percentage": 66.67,
+          "last_updated": "2025-09-18T12:57:08.528354"
+        }
+      }
+    }
+  ],
+  "conditional_context": {},
+  "conditional_decisions": [],
+  "error_recovery_attempts": [],
+  "_metadata": {
+    "workflow_id": "dynamic_agent_test",
+    "timestamp": "2025-09-18T12:57:08.529025",
+    "version": "1.0"
+  },
+  "end_time": "2025-09-18T12:57:08.529020",
+  "result": {
+    "status": "success",
+    "workflow_id": "dynamic_agent_test",
+    "task_results": [
+      {
+        "task_index": 0,
+        "agent": null,
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.527814",
+        "advanced_recovery": true,
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [],
+          "skipped": [
+            "No output specification in task"
+          ]
+        }
+      },
+      {
+        "task_index": 1,
+        "agent": null,
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.528316",
+        "advanced_recovery": true,
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [],
+          "skipped": [
+            "No output specification in task"
+          ]
+        }
+      },
+      {
+        "task_index": 2,
+        "agent": null,
+        "status": "success",
+        "timestamp": "2025-09-18T12:57:08.528813",
+        "advanced_recovery": true,
+        "artefacts_generated": {
+          "generated": [],
+          "failed": [],
+          "skipped": [
+            "No output specification in task"
+          ]
+        }
+      }
+    ],
+    "checkpoints": [],
+    "conditional_decisions": [],
+    "recovery_actions": []
+  }
+}

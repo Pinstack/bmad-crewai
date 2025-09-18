@@ -342,7 +342,7 @@ class ArtefactManager:
             Dict with validation results
         """
         results = {
-            "valid": True,
+            "consistent": True,
             "issues": [],
             "cross_references": [],
             "recommendations": [],
@@ -353,15 +353,15 @@ class ArtefactManager:
             if artefact_type == "stories":
                 if "## Acceptance Criteria" not in content:
                     results["issues"].append("Missing Acceptance Criteria section")
-                    results["valid"] = False
+                    results["consistent"] = False
                 if "## Status:" not in content:
                     results["issues"].append("Missing Status section")
-                    results["valid"] = False
+                    results["consistent"] = False
 
             elif artefact_type == "qa_gates":
                 if "gate:" not in content.lower():
                     results["issues"].append("Missing gate decision")
-                    results["valid"] = False
+                    results["consistent"] = False
 
             # Cross-reference validation (basic implementation)
             if artefact_type == "stories":
@@ -374,7 +374,7 @@ class ArtefactManager:
                     results["cross_references"].append("References QA artefacts")
 
         except Exception as e:
-            results["valid"] = False
+            results["consistent"] = False
             results["issues"].append(f"Validation error: {e}")
 
         return results

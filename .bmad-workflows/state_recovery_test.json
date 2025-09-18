@@ -1,0 +1,17 @@
+{
+  "status": "running",
+  "current_step": "initialization",
+  "steps_completed": [],
+  "progress": {
+    "completed": 0,
+    "total": 1,
+    "percentage": 0.0
+  },
+  "recovery_checkpoint": null,
+  "recovery_time": "2025-09-18T12:57:08.661901",
+  "_metadata": {
+    "workflow_id": "state_recovery_test",
+    "timestamp": "2025-09-18T12:57:08.661905",
+    "version": "1.0"
+  }
+}
