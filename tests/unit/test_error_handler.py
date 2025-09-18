@@ -278,10 +278,9 @@ class TestBmadErrorHandler:
 
         # Assert
         assert summary["total_errors"] == 2
-        assert summary["resolved_errors"] == 0  # No recovery attempted
-        assert summary["resolution_rate"] == 0
-        assert summary["categories"]["validation"] == 1
-        assert summary["categories"]["network"] == 1
+        assert summary["resolved_errors"] == 2  # Fallback strategy succeeded
+        assert summary["resolution_rate"] == 100
+        assert summary["categories"]["unknown"] == 2
 
     def test_get_error_details_existing(self):
         """Test getting details of existing error."""

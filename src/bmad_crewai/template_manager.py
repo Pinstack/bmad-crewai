@@ -111,7 +111,7 @@ class TemplateManager:
         # Extract workflow mode
         workflow_mode = workflow.get("mode", "interactive")
         if workflow_mode not in ["interactive", "batch", "automated"]:
-            self.logger.warning(
+            logger.warning(
                 f"Unknown workflow mode '{workflow_mode}' in "
                 f"{template_path}, defaulting to 'interactive'"
             )

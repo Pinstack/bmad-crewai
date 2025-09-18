@@ -20,26 +20,19 @@ class TestCrewAIOrchestrationEngine:
         """Set up test fixtures."""
         self.engine = CrewAIOrchestrationEngine()
 
-    @patch("src.bmad_crewai.crewai_engine.crewai")
-    def test_initialization_with_crewai_available(self, mock_crewai):
+    def test_initialization_with_crewai_available(self):
         """Test successful initialization when CrewAI is available."""
-        # Arrange
-        mock_crewai.__version__ = "0.186.1"
-
         # Act
         engine = CrewAIOrchestrationEngine()
 
         # Assert
-        assert engine.crewai_version == "0.186.1"
+        assert engine.crewai_version == "0.186.1"  # Should match installed version
         assert engine.crew is None
         assert engine.agents == {}
         assert hasattr(engine, "get_engine_status")
 
-    @patch(
-        "src.bmad_crewai.crewai_engine.crewai",
-        side_effect=ImportError("No module named 'crewai'"),
-    )
-    def test_initialization_without_crewai_raises_error(self, mock_import):
+    @patch.dict("sys.modules", {"crewai": None})
+    def test_initialization_without_crewai_raises_error(self):
         """Test error handling when CrewAI is not available."""
         # Act & Assert
         with pytest.raises(BmadCrewAIError, match="CrewAI not available"):
