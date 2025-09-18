@@ -606,3 +606,654 @@ class AgentRegistry:
         except Exception as e:
             self.logger.error(f"Failed to get agent handoff history: {e}")
             return []
+
+    def get_optimal_agent(
+        self,
+        task_requirements: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+        workflow_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Get the optimal agent for a task based on requirements, context, and performance.
+
+        Args:
+            task_requirements: Task requirements and capabilities needed
+            context: Optional workflow context
+            workflow_id: Optional workflow ID for context
+
+        Returns:
+            Optional[str]: Best agent ID or None if no suitable agent found
+        """
+        try:
+            # Get all available agents
+            available_agents = self._get_available_agents()
+
+            if not available_agents:
+                self.logger.warning("No agents available for task assignment")
+                return None
+
+            # Score each agent based on requirements and context
+            agent_scores = {}
+            for agent_id in available_agents:
+                score = self._calculate_agent_score(
+                    agent_id, task_requirements, context, workflow_id
+                )
+                agent_scores[agent_id] = score
+
+            # Return agent with highest score
+            if agent_scores:
+                best_agent = max(agent_scores.items(), key=lambda x: x[1])
+                self.logger.info(
+                    f"Selected optimal agent {best_agent[0]} with score {best_agent[1]}"
+                )
+                return best_agent[0]
+
+        except Exception as e:
+            self.logger.error(f"Failed to get optimal agent: {e}")
+
+        return None
+
+    def _get_available_agents(self) -> List[str]:
+        """Get list of currently available agents."""
+        # For now, return all registered agents
+        # In future, this could check agent availability, load, etc.
+        return list(self.bmad_agents.keys())
+
+    def _calculate_agent_score(
+        self,
+        agent_id: str,
+        task_requirements: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+        workflow_id: Optional[str] = None,
+    ) -> float:
+        """
+        Calculate suitability score for an agent based on task requirements.
+
+        Args:
+            agent_id: Agent identifier
+            task_requirements: Task requirements
+            context: Optional workflow context
+            workflow_id: Optional workflow ID
+
+        Returns:
+            float: Suitability score (0.0 to 1.0)
+        """
+        score = 0.0
+        total_weight = 0.0
+
+        try:
+            # Capability matching (weight: 0.4)
+            capability_score = self._score_capability_match(agent_id, task_requirements)
+            score += capability_score * 0.4
+            total_weight += 0.4
+
+            # Performance history (weight: 0.3)
+            performance_score = self._score_performance_history(
+                agent_id, task_requirements, workflow_id
+            )
+            score += performance_score * 0.3
+            total_weight += 0.3
+
+            # Load balancing (weight: 0.2)
+            load_score = self._score_load_balance(agent_id, workflow_id)
+            score += load_score * 0.2
+            total_weight += 0.2
+
+            # Context compatibility (weight: 0.1)
+            context_score = self._score_context_compatibility(agent_id, context)
+            score += context_score * 0.1
+            total_weight += 0.1
+
+            # Normalize score
+            final_score = score / total_weight if total_weight > 0 else 0.0
+
+            return max(0.0, min(1.0, final_score))
+
+        except Exception as e:
+            self.logger.warning(f"Failed to calculate agent score for {agent_id}: {e}")
+            return 0.0
+
+    def _score_capability_match(
+        self, agent_id: str, task_requirements: Dict[str, Any]
+    ) -> float:
+        """Score agent based on capability match with task requirements."""
+        agent_capabilities = self._get_agent_capabilities(agent_id)
+        task_capabilities = task_requirements.get("capabilities", [])
+
+        if not task_capabilities:
+            return 1.0  # No specific requirements, full score
+
+        if not agent_capabilities:
+            return 0.0  # No capabilities defined
+
+        # Calculate match ratio
+        matches = 0
+        for req_cap in task_capabilities:
+            if req_cap in agent_capabilities:
+                matches += 1
+
+        return matches / len(task_capabilities) if task_capabilities else 1.0
+
+    def _get_agent_capabilities(self, agent_id: str) -> List[str]:
+        """Get capabilities for an agent."""
+        # Define agent capabilities based on BMAD methodology
+        agent_capabilities = {
+            "scrum-master": ["coordination", "process", "facilitation", "agile"],
+            "product-owner": ["requirements", "validation", "stakeholder", "backlog"],
+            "product-manager": ["strategy", "market", "roadmap", "stakeholder"],
+            "architect": ["design", "architecture", "technical", "patterns"],
+            "dev-agent": ["implementation", "coding", "debugging", "testing"],
+            "qa-agent": ["testing", "quality", "validation", "automation"],
+        }
+
+        return agent_capabilities.get(agent_id, [])
+
+    def _score_performance_history(
+        self,
+        agent_id: str,
+        task_requirements: Dict[str, Any],
+        workflow_id: Optional[str] = None,
+    ) -> float:
+        """Score agent based on historical performance."""
+        # For now, use handoff history as performance indicator
+        # In future, this could use actual performance metrics
+
+        handoffs = self.get_agent_handoff_history(agent_id, workflow_id)
+        if not handoffs:
+            return 0.5  # Neutral score for no history
+
+        # Calculate success rate from handoffs
+        successful_handoffs = sum(1 for h in handoffs if not h.get("error"))
+        success_rate = successful_handoffs / len(handoffs) if handoffs else 0.5
+
+        return success_rate
+
+    def _score_load_balance(
+        self, agent_id: str, workflow_id: Optional[str] = None
+    ) -> float:
+        """Score agent based on current load balancing."""
+        # Simple load balancing based on recent handoffs
+        recent_handoffs = self.get_agent_handoffs(workflow_id)
+
+        if not recent_handoffs:
+            return 1.0  # No recent activity, fully available
+
+        # Count recent assignments for this agent
+        agent_assignments = sum(
+            1
+            for h in recent_handoffs[-20:]  # Last 20 handoffs
+            if h.get("to_agent") == agent_id
+        )
+
+        # Calculate load score (lower assignments = higher score)
+        max_expected_load = 5  # Arbitrary threshold
+        load_factor = min(agent_assignments / max_expected_load, 1.0)
+
+        # Return inverse (higher availability = higher score)
+        return 1.0 - load_factor
+
+    def _score_context_compatibility(
+        self, agent_id: str, context: Optional[Dict[str, Any]] = None
+    ) -> float:
+        """Score agent based on workflow context compatibility."""
+        if not context:
+            return 1.0  # No context, full compatibility
+
+        # Check workflow phase compatibility
+        workflow_phase = context.get("phase", "")
+        agent_workflow_phases = {
+            "scrum-master": ["planning", "review", "retrospective"],
+            "product-owner": ["requirements", "validation", "acceptance"],
+            "product-manager": ["strategy", "roadmap", "analysis"],
+            "architect": ["design", "architecture", "technical"],
+            "dev-agent": ["implementation", "development", "coding"],
+            "qa-agent": ["testing", "validation", "quality"],
+        }
+
+        compatible_phases = agent_workflow_phases.get(agent_id, [])
+        if workflow_phase and workflow_phase in compatible_phases:
+            return 1.0
+
+        # Partial compatibility if phase is related
+        if workflow_phase:
+            return 0.5
+
+        return 1.0  # Default compatibility
+
+    def get_agent_performance_metrics(
+        self, agent_id: str, workflow_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Get performance metrics for an agent.
+
+        Args:
+            agent_id: Agent identifier
+            workflow_id: Optional workflow ID to filter metrics
+
+        Returns:
+            Dict[str, Any]: Performance metrics
+        """
+        try:
+            handoffs = self.get_agent_handoff_history(agent_id, workflow_id)
+
+            metrics = {
+                "total_handoffs": len(handoffs),
+                "successful_handoffs": sum(1 for h in handoffs if not h.get("error")),
+                "average_handoff_time": 0.0,  # Placeholder for future implementation
+                "error_rate": 0.0,
+                "availability_score": self._score_load_balance(agent_id, workflow_id),
+            }
+
+            if metrics["total_handoffs"] > 0:
+                metrics["error_rate"] = 1.0 - (
+                    metrics["successful_handoffs"] / metrics["total_handoffs"]
+                )
+                metrics["success_rate"] = (
+                    metrics["successful_handoffs"] / metrics["total_handoffs"]
+                )
+
+            return metrics
+
+        except Exception as e:
+            self.logger.error(f"Failed to get performance metrics for {agent_id}: {e}")
+            return {
+                "total_handoffs": 0,
+                "successful_handoffs": 0,
+                "error_rate": 0.0,
+                "availability_score": 0.5,
+            }
+
+    def optimize_agent_assignment(
+        self,
+        task_requirements: Dict[str, Any],
+        available_agents: Optional[List[str]] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Optimize agent assignment for a task with detailed analysis.
+
+        Args:
+            task_requirements: Task requirements
+            available_agents: Optional list of available agents
+            context: Optional workflow context
+
+        Returns:
+            Dict[str, Any]: Optimization result with recommendations
+        """
+        try:
+            if available_agents is None:
+                available_agents = self._get_available_agents()
+
+            optimization_result = {
+                "recommended_agent": None,
+                "confidence_score": 0.0,
+                "alternatives": [],
+                "reasoning": {},
+                "optimization_factors": {},
+            }
+
+            # Calculate scores for all available agents
+            agent_scores = {}
+            for agent_id in available_agents:
+                score = self._calculate_agent_score(
+                    agent_id, task_requirements, context
+                )
+                agent_scores[agent_id] = score
+
+            if not agent_scores:
+                return optimization_result
+
+            # Sort by score (descending)
+            sorted_agents = sorted(
+                agent_scores.items(), key=lambda x: x[1], reverse=True
+            )
+
+            # Set recommended agent
+            best_agent, best_score = sorted_agents[0]
+            optimization_result["recommended_agent"] = best_agent
+            optimization_result["confidence_score"] = best_score
+
+            # Add alternatives (top 3)
+            optimization_result["alternatives"] = [
+                {"agent": agent, "score": score}
+                for agent, score in sorted_agents[1:4]  # Next 3 best
+            ]
+
+            # Add reasoning
+            optimization_result["reasoning"] = {
+                "capability_match": self._score_capability_match(
+                    best_agent, task_requirements
+                ),
+                "performance_history": self._score_performance_history(
+                    best_agent, task_requirements
+                ),
+                "load_balance": self._score_load_balance(best_agent),
+                "context_compatibility": self._score_context_compatibility(
+                    best_agent, context
+                ),
+            }
+
+            # Add optimization factors
+            optimization_result["optimization_factors"] = {
+                "capability_weight": 0.4,
+                "performance_weight": 0.3,
+                "load_weight": 0.2,
+                "context_weight": 0.1,
+                "total_agents_considered": len(available_agents),
+            }
+
+            return optimization_result
+
+        except Exception as e:
+            self.logger.error(f"Failed to optimize agent assignment: {e}")
+            return {
+                "recommended_agent": None,
+                "confidence_score": 0.0,
+                "alternatives": [],
+                "reasoning": {"error": str(e)},
+                "optimization_factors": {},
+            }
+
+    # Performance tracking extension methods for monitoring and analytics
+
+    def track_performance(self, agent_id: str, task_metrics: Dict[str, Any]) -> bool:
+        """
+        Track agent performance metrics for monitoring and analytics.
+
+        Args:
+            agent_id: Agent identifier
+            task_metrics: Performance metrics from task execution
+
+        Returns:
+            bool: True if tracking successful, False otherwise
+        """
+        try:
+            if agent_id not in self.bmad_agents:
+                self.logger.warning(f"Agent {agent_id} not found in registry")
+                return False
+
+            # Initialize performance tracking if not exists
+            if not hasattr(self, "_agent_performance"):
+                self._agent_performance = {}
+            if agent_id not in self._agent_performance:
+                self._agent_performance[agent_id] = {
+                    "total_tasks": 0,
+                    "successful_tasks": 0,
+                    "failed_tasks": 0,
+                    "response_times": [],
+                    "error_types": {},
+                    "last_activity": None,
+                    "utilization_rate": 0.0,
+                    "success_rate_history": [],
+                    "response_time_history": [],
+                }
+
+            perf_data = self._agent_performance[agent_id]
+
+            # Update basic metrics
+            perf_data["total_tasks"] += 1
+            perf_data["last_activity"] = task_metrics.get("timestamp")
+
+            # Track success/failure
+            if task_metrics.get("success", False):
+                perf_data["successful_tasks"] += 1
+            else:
+                perf_data["failed_tasks"] += 1
+                error_type = task_metrics.get("error_type", "unknown")
+                perf_data["error_types"][error_type] = (
+                    perf_data["error_types"].get(error_type, 0) + 1
+                )
+
+            # Track response time
+            response_time = task_metrics.get("response_time")
+            if response_time is not None:
+                perf_data["response_times"].append(response_time)
+                perf_data["response_time_history"].append(
+                    {
+                        "timestamp": task_metrics.get("timestamp"),
+                        "duration": response_time,
+                        "task_type": task_metrics.get("task_type", "unknown"),
+                    }
+                )
+
+            # Calculate success rate
+            if perf_data["total_tasks"] > 0:
+                current_success_rate = (
+                    perf_data["successful_tasks"] / perf_data["total_tasks"]
+                )
+                perf_data["success_rate_history"].append(
+                    {
+                        "timestamp": task_metrics.get("timestamp"),
+                        "rate": current_success_rate,
+                    }
+                )
+
+            # Update utilization rate (simple moving average)
+            recent_tasks = min(10, len(perf_data["success_rate_history"]))
+            if recent_tasks > 0:
+                recent_success_rate = (
+                    sum(
+                        entry["rate"]
+                        for entry in perf_data["success_rate_history"][-recent_tasks:]
+                    )
+                    / recent_tasks
+                )
+                perf_data["utilization_rate"] = recent_success_rate
+
+            self.logger.debug(
+                f"Tracked performance for agent {agent_id}: success={task_metrics.get('success', False)}"
+            )
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to track performance for agent {agent_id}: {e}")
+            return False
+
+    def get_agent_performance_history(self, agent_id: str) -> Dict[str, Any]:
+        """
+        Get comprehensive performance history for an agent.
+
+        Args:
+            agent_id: Agent identifier
+
+        Returns:
+            Dictionary with performance history and trends
+        """
+        try:
+            if (
+                not hasattr(self, "_agent_performance")
+                or agent_id not in self._agent_performance
+            ):
+                return {"error": f"No performance data available for agent {agent_id}"}
+
+            perf_data = self._agent_performance[agent_id]
+
+            # Calculate response time statistics
+            response_times = perf_data.get("response_times", [])
+            response_stats = {}
+            if response_times:
+                response_stats = {
+                    "average_response_time": sum(response_times) / len(response_times),
+                    "min_response_time": min(response_times),
+                    "max_response_time": max(response_times),
+                    "median_response_time": sorted(response_times)[
+                        len(response_times) // 2
+                    ],
+                    "response_time_variance": (
+                        sum(
+                            (x - response_stats.get("average_response_time", 0)) ** 2
+                            for x in response_times
+                        )
+                        / len(response_times)
+                        if response_times
+                        else 0
+                    ),
+                }
+
+            # Calculate success rate trends
+            success_history = perf_data.get("success_rate_history", [])
+            trend_direction = "stable"
+            if len(success_history) >= 2:
+                recent_rates = [entry["rate"] for entry in success_history[-5:]]
+                if len(recent_rates) >= 2:
+                    trend = recent_rates[-1] - recent_rates[0]
+                    if trend > 0.05:
+                        trend_direction = "improving"
+                    elif trend < -0.05:
+                        trend_direction = "degrading"
+
+            # Calculate error distribution
+            error_distribution = {}
+            total_errors = sum(perf_data.get("error_types", {}).values())
+            if total_errors > 0:
+                for error_type, count in perf_data["error_types"].items():
+                    error_distribution[error_type] = {
+                        "count": count,
+                        "percentage": (count / total_errors) * 100,
+                    }
+
+            return {
+                "agent_id": agent_id,
+                "total_tasks": perf_data["total_tasks"],
+                "successful_tasks": perf_data["successful_tasks"],
+                "failed_tasks": perf_data["failed_tasks"],
+                "success_rate": (
+                    perf_data["successful_tasks"] / perf_data["total_tasks"]
+                    if perf_data["total_tasks"] > 0
+                    else 0
+                ),
+                "utilization_rate": perf_data["utilization_rate"],
+                "response_time_stats": response_stats,
+                "trend_direction": trend_direction,
+                "error_distribution": error_distribution,
+                "last_activity": perf_data["last_activity"],
+                "performance_score": self._calculate_performance_score(perf_data),
+            }
+
+        except Exception as e:
+            self.logger.error(
+                f"Failed to get performance history for agent {agent_id}: {e}"
+            )
+            return {"error": str(e)}
+
+    def _calculate_performance_score(self, perf_data: Dict[str, Any]) -> float:
+        """Calculate overall performance score for an agent (0-100)."""
+        if perf_data["total_tasks"] == 0:
+            return 50.0  # Neutral score for new agents
+
+        success_rate = perf_data["successful_tasks"] / perf_data["total_tasks"]
+        utilization_rate = perf_data["utilization_rate"]
+
+        # Weight factors: success (50%), utilization (30%), consistency (20%)
+        score = (
+            success_rate * 50
+            + utilization_rate * 30
+            + (
+                1
+                - len(perf_data.get("error_types", {}))
+                / max(perf_data["total_tasks"], 1)
+            )
+            * 20
+        )
+
+        return min(100.0, max(0.0, score))
+
+    def get_agent_performance_trends(
+        self, agent_id: str, window_size: int = 10
+    ) -> Dict[str, Any]:
+        """Get performance trends over recent tasks."""
+        try:
+            if (
+                not hasattr(self, "_agent_performance")
+                or agent_id not in self._agent_performance
+            ):
+                return {"error": f"No performance data available for agent {agent_id}"}
+
+            perf_data = self._agent_performance[agent_id]
+            success_history = perf_data.get("success_rate_history", [])
+            response_history = perf_data.get("response_time_history", [])
+
+            if len(success_history) < 2:
+                return {"insufficient_data": True}
+
+            # Analyze success rate trend
+            recent_success = (
+                success_history[-window_size:]
+                if len(success_history) >= window_size
+                else success_history
+            )
+            success_trend = "stable"
+            if len(recent_success) >= 2:
+                early_avg = sum(
+                    entry["rate"]
+                    for entry in recent_success[: len(recent_success) // 2]
+                ) / (len(recent_success) // 2)
+                late_avg = sum(
+                    entry["rate"]
+                    for entry in recent_success[len(recent_success) // 2 :]
+                ) / (len(recent_success) // 2)
+                if late_avg > early_avg + 0.05:
+                    success_trend = "improving"
+                elif late_avg < early_avg - 0.05:
+                    success_trend = "degrading"
+
+            # Analyze response time trend
+            response_trend = "stable"
+            if len(response_history) >= window_size:
+                recent_responses = response_history[-window_size:]
+                early_avg = sum(
+                    entry["duration"]
+                    for entry in recent_responses[: len(recent_responses) // 2]
+                ) / (len(recent_responses) // 2)
+                late_avg = sum(
+                    entry["duration"]
+                    for entry in recent_responses[len(recent_responses) // 2 :]
+                ) / (len(recent_responses) // 2)
+                if late_avg < early_avg * 0.9:
+                    response_trend = "improving"
+                elif late_avg > early_avg * 1.1:
+                    response_trend = "degrading"
+
+            return {
+                "success_rate_trend": success_trend,
+                "response_time_trend": response_trend,
+                "analysis_window": len(recent_success),
+                "recommendations": self._generate_performance_recommendations(
+                    success_trend, response_trend
+                ),
+            }
+
+        except Exception as e:
+            self.logger.error(
+                f"Failed to get performance trends for agent {agent_id}: {e}"
+            )
+            return {"error": str(e)}
+
+    def _generate_performance_recommendations(
+        self, success_trend: str, response_trend: str
+    ) -> List[str]:
+        """Generate recommendations based on performance trends."""
+        recommendations = []
+
+        if success_trend == "degrading":
+            recommendations.append(
+                "Review recent task failures and implement error recovery improvements"
+            )
+        elif success_trend == "improving":
+            recommendations.append(
+                "Continue current successful patterns and document best practices"
+            )
+
+        if response_trend == "degrading":
+            recommendations.append(
+                "Investigate causes of increasing response times and optimize performance"
+            )
+        elif response_trend == "improving":
+            recommendations.append("Maintain current optimization strategies")
+
+        if success_trend == "stable" and response_trend == "stable":
+            recommendations.append(
+                "Performance is stable - consider monitoring for optimization opportunities"
+            )
+
+        return recommendations

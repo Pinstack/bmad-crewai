@@ -15,6 +15,7 @@ from crewai import Agent, Crew, Process, Task
 from .artefact_manager import ArtefactManager
 from .exceptions import BmadCrewAIError
 from .workflow_state_manager import WorkflowStateManager
+from .workflow_visualizer import WorkflowVisualizer
 
 
 class CrewAIOrchestrationEngine:
@@ -427,21 +428,24 @@ class BmadWorkflowEngine:
         crew: Optional[Crew] = None,
         state_manager: Optional["WorkflowStateManager"] = None,
         artefact_manager: Optional[ArtefactManager] = None,
+        visualizer: Optional[WorkflowVisualizer] = None,
         logger: Optional[logging.Logger] = None,
     ):
         """
-        Initialize the BMAD Workflow Engine with comprehensive artefact generation.
+        Initialize the BMAD Workflow Engine with comprehensive artefact generation and visualization.
 
         Args:
             crew: Optional CrewAI crew instance
             state_manager: Optional WorkflowStateManager instance
             artefact_manager: Optional ArtefactManager instance for artefact generation
+            visualizer: Optional WorkflowVisualizer instance for monitoring and visualization
             logger: Optional logger instance
         """
         self.logger = logger or logging.getLogger(__name__)
         self.crew = crew
         self.state_manager = state_manager
         self.artefact_manager = artefact_manager
+        self.visualizer = visualizer
 
         # Initialize state manager if not provided
         if not self.state_manager:
@@ -453,13 +457,1123 @@ class BmadWorkflowEngine:
         if not self.artefact_manager:
             self.artefact_manager = ArtefactManager()
 
+        # Initialize visualizer if not provided
+        if not self.visualizer:
+            self.visualizer = WorkflowVisualizer(logger=self.logger)
+
         # Threading support for concurrent operations
         self._active_workflows: Dict[str, Dict[str, Any]] = {}
         self._workflow_locks: Dict[str, threading.Lock] = {}
 
         self.logger.info(
-            "BmadWorkflowEngine initialized with state management and artefact generation"
+            "BmadWorkflowEngine initialized with state management, artefact generation, and visualization"
         )
+
+    def execute_conditional_workflow(
+        self,
+        workflow_template: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+        workflow_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Execute a workflow with conditional logic, error recovery, and dynamic agent assignment.
+
+        Args:
+            workflow_template: Workflow specification with conditional logic
+            context: Optional context data for conditional evaluation
+            workflow_id: Optional workflow identifier
+
+        Returns:
+            Dict[str, Any]: Workflow execution results with conditional outcomes
+        """
+        if not workflow_id:
+            workflow_id = f"workflow_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        # Initialize workflow lock
+        self._workflow_locks[workflow_id] = threading.Lock()
+
+        with self._workflow_locks[workflow_id]:
+            try:
+                # Initialize workflow state with conditional context
+                initial_state = self._create_conditional_workflow_state(
+                    workflow_template, workflow_id, context or {}
+                )
+                success = self.state_manager.persist_state(workflow_id, initial_state)
+
+                if not success:
+                    raise BmadCrewAIError(
+                        f"Failed to initialize conditional workflow state for {workflow_id}"
+                    )
+
+                self._active_workflows[workflow_id] = {
+                    "template": workflow_template,
+                    "start_time": datetime.now(),
+                    "status": "running",
+                    "context": context or {},
+                }
+
+                # Execute workflow with conditional logic and state checkpoints
+                result = self._execute_conditional_workflow_with_checkpoints(
+                    workflow_id, workflow_template, context or {}
+                )
+
+                # Update final state
+                final_state = self.state_manager.recover_state(workflow_id) or {}
+                final_state["status"] = (
+                    "completed" if result.get("status") == "success" else "failed"
+                )
+                final_state["end_time"] = datetime.now().isoformat()
+                final_state["result"] = result
+
+                self.state_manager.persist_state(workflow_id, final_state)
+
+                # Collect workflow metrics and generate visualizations
+                try:
+                    workflow_metrics = self.visualizer.collect_workflow_metrics(
+                        workflow_id, final_state, result
+                    )
+                    self.logger.info(f"Collected metrics for workflow {workflow_id}")
+
+                    # Generate workflow diagram
+                    workflow_diagram = self.visualizer.generate_workflow_diagram(
+                        workflow_id, final_state, workflow_template, format="mermaid"
+                    )
+                    result["visualization"] = {
+                        "mermaid_diagram": workflow_diagram,
+                        "metrics": workflow_metrics,
+                    }
+                except Exception as viz_error:
+                    self.logger.warning(
+                        f"Failed to generate workflow visualization: {viz_error}"
+                    )
+                    result["visualization_error"] = str(viz_error)
+
+                # Cleanup active workflow tracking
+                if workflow_id in self._active_workflows:
+                    del self._active_workflows[workflow_id]
+
+                return result
+
+            except Exception as e:
+                error_msg = (
+                    f"Conditional workflow execution failed for {workflow_id}: {e}"
+                )
+                self.logger.error(error_msg)
+
+                # Mark workflow as interrupted
+                self.state_manager.mark_workflow_interrupted(workflow_id, str(e))
+
+                return {
+                    "status": "error",
+                    "error": str(e),
+                    "workflow_id": workflow_id,
+                    "timestamp": datetime.now().isoformat(),
+                }
+
+    def _create_conditional_workflow_state(
+        self,
+        workflow_template: Dict[str, Any],
+        workflow_id: str,
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Create initial workflow state with conditional execution context.
+
+        Args:
+            workflow_template: Workflow specification
+            workflow_id: Workflow identifier
+            context: Context data for conditional evaluation
+
+        Returns:
+            Dict[str, Any]: Initial conditional workflow state
+        """
+        tasks = workflow_template.get("tasks", [])
+        return {
+            "status": "initialized",
+            "current_step": "initialization",
+            "steps_completed": [],
+            "total_steps": len(tasks),
+            "workflow_template": workflow_template,
+            "agent_handoffs": [],
+            "agent_dependencies": {},
+            "execution_timeline": [
+                {
+                    "type": "initialization",
+                    "timestamp": datetime.now().isoformat(),
+                    "description": f"Conditional workflow {workflow_id} initialized",
+                }
+            ],
+            "progress": {"completed": 0, "total": len(tasks), "percentage": 0.0},
+            "checkpoints": [],
+            "conditional_context": context,
+            "conditional_decisions": [],  # Track conditional branching decisions
+            "error_recovery_attempts": [],  # Track recovery attempts
+            "_metadata": {
+                "workflow_id": workflow_id,
+                "created": datetime.now().isoformat(),
+                "version": "1.0",
+                "type": "conditional",
+            },
+        }
+
+    def _execute_conditional_workflow_with_checkpoints(
+        self,
+        workflow_id: str,
+        workflow_template: Dict[str, Any],
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Execute workflow with conditional logic, state checkpoints, and recovery support.
+
+        Args:
+            workflow_id: Workflow identifier
+            workflow_template: Workflow specification
+            context: Context data for conditional evaluation
+
+        Returns:
+            Dict[str, Any]: Execution results with conditional outcomes
+        """
+        results = {
+            "status": "running",
+            "workflow_id": workflow_id,
+            "task_results": [],
+            "checkpoints": [],
+            "conditional_decisions": [],
+            "recovery_actions": [],
+        }
+
+        try:
+            tasks = workflow_template.get("tasks", [])
+            task_index = 0
+
+            while task_index < len(tasks):
+                task_spec = tasks[task_index]
+
+                # Evaluate conditional logic if present
+                if self._should_skip_task(task_spec, context, results):
+                    self.logger.info(
+                        f"Skipping task {task_index} due to conditional logic"
+                    )
+                    task_index += 1
+                    continue
+
+                # Create checkpoint before task execution
+                checkpoint_id = f"checkpoint_{task_index}"
+                self._create_checkpoint(workflow_id, checkpoint_id, task_spec)
+
+                # Update current step in state
+                state = self.state_manager.recover_state(workflow_id)
+                if state:
+                    state["current_step"] = (
+                        f"task_{task_index}: {task_spec.get('description', 'unknown')}"
+                    )
+                    self.state_manager.persist_state(workflow_id, state)
+
+                # Execute task with error recovery
+                task_result = self._execute_task_with_advanced_error_recovery(
+                    workflow_id, task_spec, task_index, context
+                )
+
+                # Record result
+                results["task_results"].append(task_result)
+
+                # Update progress
+                self._update_workflow_progress(workflow_id, task_index + 1, len(tasks))
+
+                # Handle conditional branching
+                next_index = self._evaluate_conditional_branching(
+                    task_spec, task_result, task_index, len(tasks)
+                )
+                task_index = next_index if next_index is not None else task_index + 1
+
+                # Check for interruption or failure
+                if task_result.get("status") == "failed" and not task_result.get(
+                    "recovered"
+                ):
+                    results["status"] = "failed"
+                    results["failed_at"] = task_index - 1
+                    break
+
+            # Mark as completed if all tasks succeeded
+            if results["status"] == "running":
+                results["status"] = "success"
+
+        except Exception as e:
+            results["status"] = "error"
+            results["error"] = str(e)
+            self.logger.error(f"Conditional workflow execution error: {e}")
+
+        return results
+
+    def _should_skip_task(
+        self,
+        task_spec: Dict[str, Any],
+        context: Dict[str, Any],
+        results: Dict[str, Any],
+    ) -> bool:
+        """
+        Evaluate conditional logic to determine if a task should be skipped.
+
+        Args:
+            task_spec: Task specification
+            context: Context data
+            results: Current execution results
+
+        Returns:
+            bool: True if task should be skipped
+        """
+        condition = task_spec.get("condition")
+        if not condition:
+            return False
+
+        try:
+            # Evaluate condition based on type
+            condition_type = condition.get("type")
+
+            if condition_type == "context_check":
+                return self._evaluate_context_condition(condition, context)
+            elif condition_type == "previous_result":
+                return self._evaluate_result_condition(condition, results)
+            elif condition_type == "time_based":
+                return self._evaluate_time_condition(condition)
+            elif condition_type == "dependency_check":
+                return self._evaluate_dependency_condition(condition, results)
+
+            # Unknown condition type - execute task
+            return False
+
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to evaluate condition for task {task_spec.get('description', 'unknown')}: {e}"
+            )
+            return False  # Default to executing task on condition evaluation failure
+
+    def _evaluate_context_condition(
+        self, condition: Dict[str, Any], context: Dict[str, Any]
+    ) -> bool:
+        """Evaluate context-based condition."""
+        key = condition.get("key")
+        operator = condition.get("operator", "equals")
+        value = condition.get("value")
+
+        if key not in context:
+            return False
+
+        actual_value = context[key]
+
+        if operator == "equals":
+            return actual_value == value
+        elif operator == "not_equals":
+            return actual_value != value
+        elif operator == "contains":
+            return (
+                value in actual_value
+                if isinstance(actual_value, (list, str))
+                else False
+            )
+        elif operator == "greater_than":
+            return actual_value > value
+        elif operator == "less_than":
+            return actual_value < value
+
+        return False
+
+    def _evaluate_result_condition(
+        self, condition: Dict[str, Any], results: Dict[str, Any]
+    ) -> bool:
+        """Evaluate condition based on previous task results."""
+        task_index = condition.get("task_index", -1)
+        expected_status = condition.get("status", "success")
+
+        if task_index >= len(results.get("task_results", [])):
+            return False
+
+        task_result = results["task_results"][task_index]
+        return task_result.get("status") == expected_status
+
+    def _evaluate_time_condition(self, condition: Dict[str, Any]) -> bool:
+        """Evaluate time-based condition."""
+        import time
+
+        current_hour = datetime.now().hour
+        start_hour = condition.get("start_hour", 0)
+        end_hour = condition.get("end_hour", 23)
+
+        return start_hour <= current_hour <= end_hour
+
+    def _evaluate_dependency_condition(
+        self, condition: Dict[str, Any], results: Dict[str, Any]
+    ) -> bool:
+        """Evaluate dependency-based condition."""
+        dependency = condition.get("dependency")
+        if not dependency:
+            return True
+
+        # Check if required dependency is available
+        # This could be extended to check for external services, files, etc.
+        return dependency in context or dependency in [
+            r.get("dependency") for r in results.get("task_results", [])
+        ]
+
+    def _evaluate_conditional_branching(
+        self,
+        task_spec: Dict[str, Any],
+        task_result: Dict[str, Any],
+        current_index: int,
+        total_tasks: int,
+    ) -> Optional[int]:
+        """
+        Evaluate conditional branching logic.
+
+        Args:
+            task_spec: Task specification
+            task_result: Task execution result
+            current_index: Current task index
+            total_tasks: Total number of tasks
+
+        Returns:
+            Optional[int]: Next task index or None to continue sequentially
+        """
+        branching = task_spec.get("branching")
+        if not branching:
+            return None
+
+        try:
+            branching_type = branching.get("type")
+
+            if branching_type == "on_success":
+                if task_result.get("status") == "success":
+                    return self._resolve_branch_target(
+                        branching.get("success_target"), current_index, total_tasks
+                    )
+            elif branching_type == "on_failure":
+                if task_result.get("status") == "failed":
+                    return self._resolve_branch_target(
+                        branching.get("failure_target"), current_index, total_tasks
+                    )
+            elif branching_type == "conditional":
+                return self._resolve_conditional_branching(
+                    branching, task_result, current_index, total_tasks
+                )
+
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to evaluate branching for task {current_index}: {e}"
+            )
+
+        return None
+
+    def _resolve_branch_target(
+        self, target: str, current_index: int, total_tasks: int
+    ) -> Optional[int]:
+        """Resolve branching target to task index."""
+        if isinstance(target, int):
+            return target if 0 <= target < total_tasks else None
+        elif target == "next":
+            return current_index + 1
+        elif target == "end":
+            return total_tasks  # End workflow
+        elif target.startswith("task_"):
+            try:
+                return int(target.split("_")[1])
+            except (ValueError, IndexError):
+                pass
+        return None
+
+    def _resolve_conditional_branching(
+        self,
+        branching: Dict[str, Any],
+        task_result: Dict[str, Any],
+        current_index: int,
+        total_tasks: int,
+    ) -> Optional[int]:
+        """Resolve complex conditional branching."""
+        conditions = branching.get("conditions", [])
+
+        for condition in conditions:
+            if self._check_branching_condition(condition, task_result):
+                return self._resolve_branch_target(
+                    condition.get("target"), current_index, total_tasks
+                )
+
+        # Default target if no conditions match
+        return self._resolve_branch_target(
+            branching.get("default_target"), current_index, total_tasks
+        )
+
+    def _check_branching_condition(
+        self, condition: Dict[str, Any], task_result: Dict[str, Any]
+    ) -> bool:
+        """Check if branching condition is met."""
+        condition_type = condition.get("type")
+
+        if condition_type == "status_check":
+            return task_result.get("status") == condition.get("expected_status")
+        elif condition_type == "result_check":
+            return task_result.get("result") == condition.get("expected_result")
+        elif condition_type == "time_check":
+            return self._evaluate_time_condition(condition)
+
+        return False
+
+    def _execute_task_with_error_recovery(
+        self,
+        workflow_id: str,
+        task_spec: Dict[str, Any],
+        task_index: int,
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Execute a task with error recovery and retry mechanisms.
+
+        Args:
+            workflow_id: Workflow identifier
+            task_spec: Task specification
+            task_index: Task index in workflow
+            context: Context data
+
+        Returns:
+            Dict[str, Any]: Task execution result with recovery information
+        """
+        agent_id = task_spec.get("agent")
+        task_result = {
+            "task_index": task_index,
+            "agent": agent_id,
+            "status": "pending",
+            "timestamp": datetime.now().isoformat(),
+            "recovery_attempts": [],
+        }
+
+        # Get retry configuration from task spec
+        retry_config = task_spec.get("retry", {})
+        max_retries = retry_config.get("max_attempts", 3)
+        backoff_seconds = retry_config.get("backoff_seconds", 1)
+
+        attempt = 0
+        while attempt <= max_retries:
+            try:
+                # Attempt to execute task
+                task_result.update(
+                    self._execute_single_task_attempt(
+                        workflow_id, task_spec, task_index, context, attempt
+                    )
+                )
+
+                # Check if execution was successful
+                if task_result.get("status") == "success":
+                    if attempt > 0:
+                        task_result["recovered"] = True
+                        task_result["recovery_attempts"] = attempt
+                    return task_result
+
+                # If this was the last attempt, mark as failed
+                if attempt == max_retries:
+                    task_result["status"] = "failed"
+                    task_result["error"] = "Max retry attempts exceeded"
+                    task_result["total_attempts"] = attempt + 1
+                    return task_result
+
+                # Prepare for retry
+                attempt += 1
+                wait_time = backoff_seconds * (
+                    2 ** (attempt - 1)
+                )  # Exponential backoff
+                self.logger.info(
+                    f"Task {task_index} failed, retrying in {wait_time}s (attempt {attempt}/{max_retries})"
+                )
+
+                # Record retry attempt
+                task_result["recovery_attempts"].append(
+                    {
+                        "attempt": attempt,
+                        "timestamp": datetime.now().isoformat(),
+                        "wait_time": wait_time,
+                        "reason": task_result.get("error", "unknown"),
+                    }
+                )
+
+                # Wait before retry
+                time.sleep(wait_time)
+
+            except Exception as e:
+                # Handle unexpected exceptions
+                if attempt == max_retries:
+                    task_result.update(
+                        {
+                            "status": "failed",
+                            "error": f"Unexpected error after {max_retries} attempts: {str(e)}",
+                            "total_attempts": attempt + 1,
+                            "exception_type": type(e).__name__,
+                        }
+                    )
+                    return task_result
+
+                attempt += 1
+                task_result["recovery_attempts"].append(
+                    {
+                        "attempt": attempt,
+                        "timestamp": datetime.now().isoformat(),
+                        "error": str(e),
+                        "exception_type": type(e).__name__,
+                    }
+                )
+
+                # Wait before retry
+                wait_time = backoff_seconds * (2 ** (attempt - 1))
+                time.sleep(wait_time)
+
+        # This should not be reached, but just in case
+        task_result["status"] = "failed"
+        task_result["error"] = "Unexpected execution path"
+        return task_result
+
+    def _execute_single_task_attempt(
+        self,
+        workflow_id: str,
+        task_spec: Dict[str, Any],
+        task_index: int,
+        context: Dict[str, Any],
+        attempt: int,
+    ) -> Dict[str, Any]:
+        """
+        Execute a single attempt of a task.
+
+        Args:
+            workflow_id: Workflow identifier
+            task_spec: Task specification
+            task_index: Task index
+            context: Context data
+            attempt: Current attempt number
+
+        Returns:
+            Dict[str, Any]: Task attempt result
+        """
+        try:
+            # Handle dynamic agent assignment if no agent specified
+            agent_id = task_spec.get("agent")
+            original_agent_id = agent_id
+
+            if not agent_id:
+                # Use dynamic agent assignment
+                agent_id = self._assign_optimal_agent(
+                    workflow_id, task_spec, task_index, context
+                )
+                if agent_id:
+                    task_spec["assigned_agent"] = agent_id
+                    self.logger.info(
+                        f"Dynamically assigned agent {agent_id} to task {task_index}"
+                    )
+                else:
+                    return {
+                        "status": "failed",
+                        "error": "No suitable agent found for dynamic assignment",
+                        "attempt": attempt + 1,
+                    }
+
+            # Validate agent handoff if this follows another task
+            if task_index > 0:
+                prev_task = self._get_previous_task_agent(workflow_id, task_index - 1)
+
+                if prev_task and agent_id and prev_task != agent_id:
+                    # Validate handoff
+                    validation = self.state_manager.validate_agent_handoff(
+                        workflow_id, prev_task, agent_id
+                    )
+                    if not validation.get("is_valid", True):
+                        # Try to find alternative agent if handoff validation fails
+                        alternative_agent = self._find_alternative_agent(
+                            workflow_id, task_spec, task_index, context, prev_task
+                        )
+                        if alternative_agent:
+                            agent_id = alternative_agent
+                            task_spec["assigned_agent"] = agent_id
+                            self.logger.info(
+                                f"Switched to alternative agent {agent_id} due to handoff validation"
+                            )
+                        else:
+                            return {
+                                "status": "failed",
+                                "error": "Agent handoff validation failed and no alternative found",
+                                "validation": validation,
+                                "attempt": attempt + 1,
+                            }
+
+                    # Track the handoff
+                    self.state_manager.track_agent_handoff(
+                        workflow_id,
+                        prev_task,
+                        agent_id,
+                        {"task_index": task_index, "from_task": task_index - 1},
+                    )
+
+            # Execute the task (simplified for now - would integrate with actual CrewAI execution)
+            if self.crew and task_spec.get("agent"):
+                # In real implementation, this would execute the actual CrewAI task
+                result = {
+                    "status": "success",
+                    "message": f"Task executed by agent {task_spec.get('agent')}",
+                    "simulated": True,  # Remove when real execution is implemented
+                    "attempt": attempt + 1,
+                }
+            else:
+                # Fallback for testing/development
+                result = {
+                    "status": "success",
+                    "message": f"Task simulated for agent {task_spec.get('agent')}",
+                    "simulated": True,
+                    "attempt": attempt + 1,
+                }
+
+            # Generate artefacts if specified in task
+            artefact_result = self._generate_task_artefacts(
+                workflow_id, task_spec, {"task_index": task_index, **result}
+            )
+            result["artefacts_generated"] = artefact_result
+
+            # Update steps completed
+            state = self.state_manager.recover_state(workflow_id)
+            if state:
+                if "steps_completed" not in state:
+                    state["steps_completed"] = []
+                if task_index not in state["steps_completed"]:
+                    state["steps_completed"].append(task_index)
+                self.state_manager.persist_state(workflow_id, state)
+
+            return result
+
+        except Exception as e:
+            return {
+                "status": "failed",
+                "error": str(e),
+                "exception_type": type(e).__name__,
+                "attempt": attempt + 1,
+            }
+
+    def _execute_task_with_advanced_error_recovery(
+        self,
+        workflow_id: str,
+        task_spec: Dict[str, Any],
+        task_index: int,
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Execute a task with advanced error recovery using the enhanced error handler.
+
+        Args:
+            workflow_id: Workflow identifier
+            task_spec: Task specification
+            task_index: Task index in workflow
+            context: Context data
+
+        Returns:
+            Dict[str, Any]: Task execution result with advanced recovery
+        """
+        agent_id = task_spec.get("agent")
+        task_result = {
+            "task_index": task_index,
+            "agent": agent_id,
+            "status": "pending",
+            "timestamp": datetime.now().isoformat(),
+            "recovery_attempts": [],
+            "advanced_recovery": True,
+        }
+
+        # Get retry configuration from task spec
+        retry_config = task_spec.get("retry", {})
+        max_retries = retry_config.get("max_attempts", 3)
+        backoff_seconds = retry_config.get("backoff_seconds", 1)
+
+        attempt = 0
+        while attempt <= max_retries:
+            try:
+                # Attempt to execute task
+                task_result.update(
+                    self._execute_single_task_attempt(
+                        workflow_id, task_spec, task_index, context, attempt
+                    )
+                )
+
+                # Check if execution was successful
+                if task_result.get("status") == "success":
+                    if attempt > 0:
+                        task_result["recovered"] = True
+                        task_result["recovery_attempts"] = attempt
+                    return task_result
+
+                # If this was the last attempt, try advanced error recovery
+                if attempt == max_retries:
+                    advanced_recovery = self._attempt_advanced_error_recovery(
+                        task_result, workflow_id, task_spec, context
+                    )
+                    if advanced_recovery.get("recovery_success"):
+                        task_result.update(
+                            {
+                                "status": "success",
+                                "advanced_recovery_used": True,
+                                "recovery_strategy": advanced_recovery.get(
+                                    "recovery_action"
+                                ),
+                                "recovery_details": advanced_recovery,
+                            }
+                        )
+                        return task_result
+                    else:
+                        task_result.update(
+                            {
+                                "status": "failed",
+                                "error": "Max retry attempts exceeded and advanced recovery failed",
+                                "total_attempts": attempt + 1,
+                                "advanced_recovery_attempted": True,
+                            }
+                        )
+                        return task_result
+
+                # Prepare for retry
+                attempt += 1
+                wait_time = backoff_seconds * (
+                    2 ** (attempt - 1)
+                )  # Exponential backoff
+                self.logger.info(
+                    f"Task {task_index} failed, retrying in {wait_time}s (attempt {attempt}/{max_retries})"
+                )
+
+                # Record retry attempt
+                task_result["recovery_attempts"].append(
+                    {
+                        "attempt": attempt,
+                        "timestamp": datetime.now().isoformat(),
+                        "wait_time": wait_time,
+                        "reason": task_result.get("error", "unknown"),
+                    }
+                )
+
+                # Wait before retry
+                time.sleep(wait_time)
+
+            except Exception as e:
+                # Handle unexpected exceptions
+                if attempt == max_retries:
+                    advanced_recovery = self._attempt_advanced_error_recovery(
+                        {"status": "failed", "error": str(e)},
+                        workflow_id,
+                        task_spec,
+                        context,
+                    )
+                    if advanced_recovery.get("recovery_success"):
+                        return {
+                            "task_index": task_index,
+                            "agent": agent_id,
+                            "status": "success",
+                            "advanced_recovery_used": True,
+                            "recovery_strategy": advanced_recovery.get(
+                                "recovery_action"
+                            ),
+                            "recovery_details": advanced_recovery,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    else:
+                        return {
+                            "task_index": task_index,
+                            "agent": agent_id,
+                            "status": "failed",
+                            "error": f"Unexpected error after {max_retries} attempts: {str(e)}",
+                            "total_attempts": attempt + 1,
+                            "exception_type": type(e).__name__,
+                            "advanced_recovery_attempted": True,
+                        }
+
+                attempt += 1
+                task_result["recovery_attempts"].append(
+                    {
+                        "attempt": attempt,
+                        "timestamp": datetime.now().isoformat(),
+                        "error": str(e),
+                        "exception_type": type(e).__name__,
+                    }
+                )
+
+                # Wait before retry
+                wait_time = backoff_seconds * (2 ** (attempt - 1))
+                time.sleep(wait_time)
+
+        # This should not be reached, but just in case
+        task_result["status"] = "failed"
+        task_result["error"] = "Unexpected execution path"
+        return task_result
+
+    def _attempt_advanced_error_recovery(
+        self,
+        task_result: Dict[str, Any],
+        workflow_id: str,
+        task_spec: Dict[str, Any],
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Attempt advanced error recovery using the enhanced error handler.
+
+        Args:
+            task_result: Current task result with error
+            workflow_id: Workflow identifier
+            task_spec: Task specification
+            context: Context data
+
+        Returns:
+            Dict[str, Any]: Advanced recovery result
+        """
+        try:
+            # Import error handler (lazy import to avoid circular dependencies)
+            from .error_handler import BmadErrorHandler
+
+            # Create error handler instance
+            error_handler = BmadErrorHandler()
+
+            # Prepare workflow context for error handling
+            workflow_context = {
+                "workflow_id": workflow_id,
+                "task_spec": task_spec,
+                "task_index": task_result.get("task_index"),
+                "current_agent": task_spec.get("agent"),
+                "context": context,
+                "error_details": task_result,
+            }
+
+            # Create a mock exception from the error details
+            error_message = task_result.get("error", "Unknown error")
+            mock_error = Exception(error_message)
+
+            # Attempt advanced recovery
+            recovery_result = error_handler.handle_workflow_error(
+                mock_error,
+                workflow_context,
+                agent_registry=getattr(self, "bmad_registry", None),
+                state_manager=self.state_manager,
+            )
+
+            return recovery_result
+
+        except Exception as recovery_error:
+            self.logger.error(f"Advanced error recovery failed: {recovery_error}")
+            return {
+                "recovery_success": False,
+                "error": f"Advanced recovery failed: {str(recovery_error)}",
+            }
+
+    def _assign_optimal_agent(
+        self,
+        workflow_id: str,
+        task_spec: Dict[str, Any],
+        task_index: int,
+        context: Dict[str, Any],
+    ) -> Optional[str]:
+        """
+        Assign the optimal agent for a task based on dynamic criteria.
+
+        Args:
+            workflow_id: Workflow identifier
+            task_spec: Task specification
+            task_index: Task index in workflow
+            context: Context data
+
+        Returns:
+            Optional[str]: Optimal agent ID or None
+        """
+        try:
+            # Import agent registry for dynamic assignment
+            from .agent_registry import AgentRegistry
+
+            # Initialize agent registry if not already done
+            if not hasattr(self, "bmad_registry"):
+                self.bmad_registry = AgentRegistry()
+                self.bmad_registry.register_bmad_agents()
+
+            # Prepare task requirements for agent selection
+            task_requirements = self._extract_task_requirements(task_spec, context)
+
+            # Get workflow context for optimization
+            workflow_context = {
+                "phase": context.get("phase", "execution"),
+                "workflow_type": context.get("workflow_type", "general"),
+                "priority": task_spec.get("priority", "medium"),
+            }
+
+            # Use the agent registry to find optimal agent
+            optimal_agent = self.bmad_registry.get_optimal_agent(
+                task_requirements=task_requirements,
+                context=workflow_context,
+                workflow_id=workflow_id,
+            )
+
+            if optimal_agent:
+                self.logger.info(
+                    f"Optimally assigned agent {optimal_agent} to task {task_index}"
+                )
+                return optimal_agent
+
+            # Fallback to basic agent assignment if optimization fails
+            return self._fallback_agent_assignment(task_spec, task_index, context)
+
+        except Exception as e:
+            self.logger.error(f"Failed to assign optimal agent: {e}")
+            return self._fallback_agent_assignment(task_spec, task_index, context)
+
+    def _extract_task_requirements(
+        self, task_spec: Dict[str, Any], context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Extract task requirements for agent selection.
+
+        Args:
+            task_spec: Task specification
+            context: Context data
+
+        Returns:
+            Dict[str, Any]: Task requirements for agent matching
+        """
+        requirements = {
+            "capabilities": [],
+            "complexity": "medium",
+            "priority": "medium",
+            "estimated_duration": "medium",
+        }
+
+        # Extract capabilities from task description
+        description = task_spec.get("description", "").lower()
+        if any(
+            word in description for word in ["code", "implement", "develop", "build"]
+        ):
+            requirements["capabilities"].append("implementation")
+            requirements["capabilities"].append("coding")
+        if any(word in description for word in ["design", "architecture", "structure"]):
+            requirements["capabilities"].append("design")
+            requirements["capabilities"].append("architecture")
+        if any(word in description for word in ["test", "validate", "quality", "qa"]):
+            requirements["capabilities"].append("testing")
+            requirements["capabilities"].append("validation")
+        if any(word in description for word in ["coordinate", "facilitate", "manage"]):
+            requirements["capabilities"].append("coordination")
+            requirements["capabilities"].append("facilitation")
+        if any(word in description for word in ["requirements", "validate", "accept"]):
+            requirements["capabilities"].append("requirements")
+            requirements["capabilities"].append("validation")
+
+        # Extract complexity from task spec or context
+        if "complex" in description or task_spec.get("complexity") == "high":
+            requirements["complexity"] = "high"
+        elif "simple" in description or task_spec.get("complexity") == "low":
+            requirements["complexity"] = "low"
+
+        # Extract priority
+        priority = task_spec.get("priority", "medium")
+        if priority in ["high", "low", "medium"]:
+            requirements["priority"] = priority
+
+        # Extract duration estimate
+        if task_spec.get("estimated_hours", 0) > 8:
+            requirements["estimated_duration"] = "long"
+        elif task_spec.get("estimated_hours", 0) < 2:
+            requirements["estimated_duration"] = "short"
+
+        return requirements
+
+    def _fallback_agent_assignment(
+        self, task_spec: Dict[str, Any], task_index: int, context: Dict[str, Any]
+    ) -> Optional[str]:
+        """
+        Fallback agent assignment when optimization fails.
+
+        Args:
+            task_spec: Task specification
+            task_index: Task index
+            context: Context data
+
+        Returns:
+            Optional[str]: Fallback agent ID
+        """
+        # Simple fallback based on task type
+        description = task_spec.get("description", "").lower()
+
+        if any(word in description for word in ["code", "implement", "develop"]):
+            return "dev-agent"
+        elif any(word in description for word in ["test", "validate", "qa"]):
+            return "qa-agent"
+        elif any(word in description for word in ["design", "architecture"]):
+            return "architect"
+        elif any(word in description for word in ["coordinate", "facilitate"]):
+            return "scrum-master"
+        elif any(word in description for word in ["requirements", "acceptance"]):
+            return "product-owner"
+        elif any(word in description for word in ["strategy", "market", "roadmap"]):
+            return "product-manager"
+        else:
+            # Default to dev-agent for general tasks
+            return "dev-agent"
+
+    def _find_alternative_agent(
+        self,
+        workflow_id: str,
+        task_spec: Dict[str, Any],
+        task_index: int,
+        context: Dict[str, Any],
+        current_agent: str,
+    ) -> Optional[str]:
+        """
+        Find an alternative agent when the preferred agent causes handoff issues.
+
+        Args:
+            workflow_id: Workflow identifier
+            task_spec: Task specification
+            task_index: Task index
+            context: Context data
+            current_agent: Current agent that caused handoff issues
+
+        Returns:
+            Optional[str]: Alternative agent ID
+        """
+        try:
+            if not hasattr(self, "bmad_registry"):
+                return self._fallback_agent_assignment(task_spec, task_index, context)
+
+            # Get all available agents except the problematic one
+            all_agents = self.bmad_registry.list_bmad_agents()
+            alternative_agents = [
+                agent for agent in all_agents if agent != current_agent
+            ]
+
+            if not alternative_agents:
+                return None
+
+            # Try to find best alternative based on task requirements
+            task_requirements = self._extract_task_requirements(task_spec, context)
+
+            workflow_context = {
+                "phase": context.get("phase", "execution"),
+                "workflow_type": context.get("workflow_type", "general"),
+            }
+
+            # Score alternatives and pick the best
+            best_alternative = None
+            best_score = 0.0
+
+            for agent_id in alternative_agents:
+                score = self.bmad_registry._calculate_agent_score(
+                    agent_id, task_requirements, workflow_context, workflow_id
+                )
+                if score > best_score:
+                    best_score = score
+                    best_alternative = agent_id
+
+            if best_alternative:
+                self.logger.info(
+                    f"Found alternative agent {best_alternative} with score {best_score}"
+                )
+                return best_alternative
+
+            # Fallback to first available agent
+            return alternative_agents[0]
+
+        except Exception as e:
+            self.logger.error(f"Failed to find alternative agent: {e}")
+            return self._fallback_agent_assignment(task_spec, task_index, context)
 
     def execute_workflow(
         self, workflow_template: Dict[str, Any], workflow_id: Optional[str] = None
@@ -1072,3 +2186,110 @@ class BmadWorkflowEngine:
             self.logger.error(f"Failed to resume workflow {workflow_id}: {e}")
 
         return False
+
+    def get_workflow_visualization(
+        self, workflow_id: str, format: str = "mermaid"
+    ) -> Optional[str]:
+        """
+        Get workflow visualization for a specific workflow.
+
+        Args:
+            workflow_id: Workflow identifier
+            format: Visualization format ("mermaid", "ascii", "json")
+
+        Returns:
+            Optional[str]: Workflow visualization or None if not available
+        """
+        try:
+            workflow_state = self.state_manager.recover_state(workflow_id)
+            if not workflow_state:
+                return None
+
+            return self.visualizer.generate_workflow_diagram(
+                workflow_id, workflow_state, format=format
+            )
+
+        except Exception as e:
+            self.logger.error(f"Failed to get workflow visualization: {e}")
+            return None
+
+    def get_workflow_metrics(self, workflow_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get workflow execution metrics.
+
+        Args:
+            workflow_id: Workflow identifier
+
+        Returns:
+            Optional[Dict[str, Any]]: Workflow metrics or None if not available
+        """
+        try:
+            workflow_state = self.state_manager.recover_state(workflow_id)
+            if not workflow_state:
+                return None
+
+            return self.visualizer.collect_workflow_metrics(workflow_id, workflow_state)
+
+        except Exception as e:
+            self.logger.error(f"Failed to get workflow metrics: {e}")
+            return None
+
+    def get_monitoring_dashboard(self, workflow_id: str) -> Dict[str, Any]:
+        """
+        Get comprehensive monitoring dashboard for a workflow.
+
+        Args:
+            workflow_id: Workflow identifier
+
+        Returns:
+            Dict[str, Any]: Monitoring dashboard data
+        """
+        return self.visualizer.generate_monitoring_dashboard(workflow_id)
+
+    def export_workflow_data(
+        self, workflow_id: str, formats: List[str] = None
+    ) -> Dict[str, str]:
+        """
+        Export workflow data in multiple formats.
+
+        Args:
+            workflow_id: Workflow identifier
+            formats: List of export formats
+
+        Returns:
+            Dict[str, str]: Exported workflow data
+        """
+        if formats is None:
+            formats = ["mermaid", "ascii", "json", "metrics"]
+
+        exports = {}
+
+        try:
+            # Export visualization
+            if "mermaid" in formats:
+                exports["mermaid"] = (
+                    self.get_workflow_visualization(workflow_id, "mermaid") or ""
+                )
+
+            if "ascii" in formats:
+                exports["ascii"] = (
+                    self.get_workflow_visualization(workflow_id, "ascii") or ""
+                )
+
+            if "json" in formats:
+                exports["json"] = (
+                    self.get_workflow_visualization(workflow_id, "json") or ""
+                )
+
+            # Export metrics
+            if "metrics" in formats:
+                metrics = self.get_workflow_metrics(workflow_id)
+                if metrics:
+                    import json
+
+                    exports["metrics"] = json.dumps(metrics, indent=2, default=str)
+
+        except Exception as e:
+            self.logger.error(f"Failed to export workflow data: {e}")
+
+        return exports

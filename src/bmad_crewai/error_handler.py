@@ -274,6 +274,149 @@ class CircuitBreakerStrategy(RecoveryStrategy):
         return category in [ErrorCategory.NETWORK, ErrorCategory.RESOURCE]
 
 
+class WorkflowSkipStrategy(RecoveryStrategy):
+    """Recovery strategy that skips failed workflow tasks and continues."""
+
+    def __init__(self, skip_condition: Optional[Callable] = None):
+        super().__init__("workflow_skip", "Skip failed task and continue workflow")
+        self.skip_condition = skip_condition
+
+    def execute(self, error: Exception, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute workflow skip strategy."""
+        task_spec = context.get("task_spec", {})
+        workflow_context = context.get("workflow_context", {})
+
+        # Check if this task can be safely skipped
+        if self.skip_condition:
+            can_skip = self.skip_condition(error, context)
+        else:
+            # Default: skip if task is marked as optional
+            can_skip = task_spec.get("optional", False)
+
+        if can_skip:
+            return {
+                "success": True,
+                "action": "skipped",
+                "reason": "Task marked as optional or safe to skip",
+                "workflow_continuation": True,
+            }
+
+        return {
+            "success": False,
+            "error": "Task cannot be safely skipped",
+            "workflow_continuation": False,
+        }
+
+    def can_handle(self, error: Exception, category: ErrorCategory) -> bool:
+        """Check if skip strategy is appropriate."""
+        # Skip strategy for validation and workflow errors
+        return category in [ErrorCategory.VALIDATION, ErrorCategory.WORKFLOW]
+
+
+class AgentSwitchStrategy(RecoveryStrategy):
+    """Recovery strategy that switches to a different agent for task execution."""
+
+    def __init__(self, agent_registry=None):
+        super().__init__("agent_switch", "Switch to different agent for task execution")
+        self.agent_registry = agent_registry
+
+    def execute(self, error: Exception, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute agent switch strategy."""
+        current_agent = context.get("current_agent")
+        task_requirements = context.get("task_requirements", {})
+        workflow_id = context.get("workflow_id")
+
+        if not self.agent_registry:
+            return {
+                "success": False,
+                "error": "No agent registry available for agent switching",
+            }
+
+        # Find alternative agent with similar capabilities
+        alternative_agent = self._find_alternative_agent(
+            current_agent, task_requirements, workflow_id
+        )
+
+        if alternative_agent:
+            return {
+                "success": True,
+                "action": "agent_switched",
+                "new_agent": alternative_agent,
+                "reason": f"Switched from {current_agent} to {alternative_agent}",
+            }
+
+        return {
+            "success": False,
+            "error": "No suitable alternative agent found",
+        }
+
+    def _find_alternative_agent(
+        self, current_agent: str, task_requirements: Dict[str, Any], workflow_id: str
+    ) -> Optional[str]:
+        """Find an alternative agent for task execution."""
+        if not self.agent_registry:
+            return None
+
+        # Get all available agents except current one
+        available_agents = [
+            agent_id
+            for agent_id in self.agent_registry.list_bmad_agents()
+            if agent_id != current_agent
+        ]
+
+        # For now, return first available agent (could be enhanced with capability matching)
+        return available_agents[0] if available_agents else None
+
+    def can_handle(self, error: Exception, category: ErrorCategory) -> bool:
+        """Check if agent switch is appropriate."""
+        # Agent switch for agent and workflow errors
+        return category in [ErrorCategory.AGENT, ErrorCategory.WORKFLOW]
+
+
+class WorkflowRollbackStrategy(RecoveryStrategy):
+    """Recovery strategy that rolls back workflow to previous checkpoint."""
+
+    def __init__(self, state_manager=None):
+        super().__init__(
+            "workflow_rollback", "Rollback workflow to previous checkpoint"
+        )
+        self.state_manager = state_manager
+
+    def execute(self, error: Exception, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute workflow rollback strategy."""
+        workflow_id = context.get("workflow_id")
+        checkpoint_id = context.get("checkpoint_id")
+
+        if not self.state_manager:
+            return {
+                "success": False,
+                "error": "No state manager available for rollback",
+            }
+
+        # Attempt to rollback to checkpoint
+        recovery_result = self.state_manager.recover_workflow_from_checkpoint(
+            workflow_id, checkpoint_id
+        )
+
+        if recovery_result:
+            return {
+                "success": True,
+                "action": "rolled_back",
+                "checkpoint_id": checkpoint_id,
+                "recovery_details": recovery_result,
+            }
+
+        return {
+            "success": False,
+            "error": "Failed to rollback to checkpoint",
+        }
+
+    def can_handle(self, error: Exception, category: ErrorCategory) -> bool:
+        """Check if rollback is appropriate."""
+        # Rollback for critical and workflow errors
+        return category in [ErrorCategory.CRITICAL, ErrorCategory.WORKFLOW]
+
+
 class BmadErrorHandler:
     """
     Comprehensive error handler for BMAD CrewAI operations.
@@ -303,6 +446,9 @@ class BmadErrorHandler:
                 RetryStrategy(),
                 CircuitBreakerStrategy(),
                 FallbackStrategy(lambda: {"fallback": "default_response"}),
+                WorkflowSkipStrategy(),
+                AgentSwitchStrategy(),
+                WorkflowRollbackStrategy(),
             ]
         )
 
@@ -388,6 +534,192 @@ class BmadErrorHandler:
             ),
             "is_open": circuit_breaker.state == "open",
         }
+
+    def handle_workflow_error(
+        self,
+        error: Exception,
+        workflow_context: Dict[str, Any],
+        agent_registry=None,
+        state_manager=None,
+    ) -> Dict[str, Any]:
+        """
+        Handle workflow-specific errors with advanced recovery strategies.
+
+        Args:
+            error: The exception that occurred
+            workflow_context: Workflow execution context
+            agent_registry: Optional agent registry for agent switching
+            state_manager: Optional state manager for rollback operations
+
+        Returns:
+            Dict containing error handling results and recovery actions
+        """
+        # Categorize the error
+        category = self._categorize_workflow_error(error, workflow_context)
+        severity = self._assess_workflow_error_severity(error, workflow_context)
+
+        # Create error record
+        error_id = f"workflow_{workflow_context.get('workflow_id', 'unknown')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        error_record = ErrorRecord(
+            error_id, error, category, severity, workflow_context
+        )
+
+        # Try workflow-specific recovery strategies first
+        recovery_result = self._attempt_workflow_recovery(
+            error_record, workflow_context, agent_registry, state_manager
+        )
+
+        if recovery_result.get("success"):
+            error_record.add_recovery_attempt(
+                recovery_result["strategy"],
+                True,
+                recovery_result,
+                f"Workflow recovery successful: {recovery_result.get('action', 'unknown')}",
+            )
+        else:
+            # Fall back to standard recovery strategies
+            standard_recovery = self.handle_error(
+                error,
+                workflow_context,
+                f"workflow_{workflow_context.get('workflow_id', 'unknown')}",
+            )
+            recovery_result = standard_recovery
+
+        return {
+            "error_handled": True,
+            "recovery_attempted": True,
+            "recovery_success": recovery_result.get("success", False),
+            "recovery_action": recovery_result.get("action", "none"),
+            "error_category": category.value,
+            "error_severity": severity.value,
+            "workflow_continuation_possible": recovery_result.get(
+                "workflow_continuation", False
+            ),
+            "details": recovery_result,
+        }
+
+    def _categorize_workflow_error(
+        self, error: Exception, workflow_context: Dict[str, Any]
+    ) -> ErrorCategory:
+        """Categorize workflow-specific errors."""
+        error_message = str(error).lower()
+        error_type = type(error).__name__.lower()
+
+        # Check for workflow-specific error patterns
+        if "agent" in error_message or "agent" in error_type:
+            return ErrorCategory.AGENT
+        elif any(
+            term in error_message
+            for term in ["workflow", "task", "checkpoint", "state"]
+        ):
+            return ErrorCategory.WORKFLOW
+        elif any(term in error_message for term in ["timeout", "deadline"]):
+            return ErrorCategory.TIMEOUT
+        elif any(term in error_message for term in ["network", "connection", "http"]):
+            return ErrorCategory.NETWORK
+        elif any(
+            term in error_message for term in ["validation", "invalid", "malformed"]
+        ):
+            return ErrorCategory.VALIDATION
+        elif any(
+            term in error_message for term in ["resource", "memory", "disk", "quota"]
+        ):
+            return ErrorCategory.RESOURCE
+        elif any(
+            term in error_message
+            for term in ["authentication", "authorization", "permission"]
+        ):
+            return ErrorCategory.AUTHENTICATION
+        else:
+            return ErrorCategory.UNKNOWN
+
+    def _assess_workflow_error_severity(
+        self, error: Exception, workflow_context: Dict[str, Any]
+    ) -> ErrorSeverity:
+        """Assess the severity of workflow errors."""
+        # Check if this is a critical workflow task
+        task_spec = workflow_context.get("task_spec", {})
+        if task_spec.get("critical", False):
+            return ErrorSeverity.CRITICAL
+
+        # Check error category for severity hints
+        error_category = self._categorize_workflow_error(error, workflow_context)
+
+        if error_category in [ErrorCategory.CRITICAL, ErrorCategory.AUTHENTICATION]:
+            return ErrorSeverity.HIGH
+        elif error_category in [ErrorCategory.NETWORK, ErrorCategory.TIMEOUT]:
+            return ErrorSeverity.MEDIUM
+        elif error_category in [ErrorCategory.VALIDATION, ErrorCategory.WORKFLOW]:
+            return ErrorSeverity.LOW
+        else:
+            return ErrorSeverity.MEDIUM
+
+    def _attempt_workflow_recovery(
+        self,
+        error_record: ErrorRecord,
+        workflow_context: Dict[str, Any],
+        agent_registry=None,
+        state_manager=None,
+    ) -> Dict[str, Any]:
+        """Attempt workflow-specific recovery strategies."""
+        applicable_strategies = []
+
+        # Prioritize workflow-specific strategies
+        for strategy in self.recovery_strategies:
+            if isinstance(
+                strategy,
+                (WorkflowSkipStrategy, AgentSwitchStrategy, WorkflowRollbackStrategy),
+            ):
+                if strategy.can_handle(error_record.error, error_record.category):
+                    applicable_strategies.append(strategy)
+
+        # Try each applicable strategy
+        for strategy in applicable_strategies:
+            try:
+                # Prepare strategy-specific context
+                strategy_context = self._prepare_strategy_context(
+                    strategy, workflow_context, agent_registry, state_manager
+                )
+
+                result = strategy.execute(error_record.error, strategy_context)
+
+                if result.get("success"):
+                    return {
+                        "success": True,
+                        "strategy": strategy.name,
+                        "action": result.get("action"),
+                        "workflow_continuation": result.get(
+                            "workflow_continuation", False
+                        ),
+                        "details": result,
+                    }
+
+            except Exception as strategy_error:
+                self.logger.warning(
+                    f"Strategy {strategy.name} failed: {strategy_error}"
+                )
+                continue
+
+        return {"success": False, "error": "No applicable recovery strategy succeeded"}
+
+    def _prepare_strategy_context(
+        self,
+        strategy: RecoveryStrategy,
+        workflow_context: Dict[str, Any],
+        agent_registry=None,
+        state_manager=None,
+    ) -> Dict[str, Any]:
+        """Prepare context specific to the recovery strategy."""
+        base_context = workflow_context.copy()
+
+        if isinstance(strategy, AgentSwitchStrategy):
+            base_context["agent_registry"] = agent_registry
+        elif isinstance(strategy, WorkflowRollbackStrategy):
+            base_context["state_manager"] = state_manager
+        elif isinstance(strategy, WorkflowSkipStrategy):
+            base_context["workflow_context"] = workflow_context
+
+        return base_context
 
     def handle_error(
         self,

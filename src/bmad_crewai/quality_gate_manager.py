@@ -720,3 +720,51 @@ class QualityGateManager:
         except Exception as e:
             self.logger.error(f"Failed to get checklist details: {e}")
             return None
+
+    def validate_artefact(self, artefact_path: str) -> Dict[str, Any]:
+        """
+        Validate a single artefact file.
+
+        Args:
+            artefact_path: Path to the artefact file to validate
+
+        Returns:
+            Dict with validation results including decision, issues, and confidence
+        """
+        try:
+            # Determine artefact type from path
+            if "stories" in artefact_path:
+                artefact_type = "stories"
+                checklist_id = "story-draft-checklist"
+            elif "qa" in artefact_path:
+                artefact_type = "qa"
+                checklist_id = "qa-gate-checklist"
+            else:
+                artefact_type = "general"
+                checklist_id = "general-artefact-checklist"
+
+            # Use the enhanced gate validation framework
+            gate_results = self.validate_gate_with_decision(
+                checklist_id,
+                "artefact",
+                {"artefact_path": artefact_path, "artefact_type": artefact_type},
+            )
+
+            # Format for CLI consumption
+            return {
+                "decision": gate_results.get("decision", "UNKNOWN"),
+                "confidence_score": gate_results.get("confidence_score", 0),
+                "issues": gate_results.get("critical_issues", []),
+                "recommendations": gate_results.get("recommendations", {}).get(
+                    "immediate", []
+                ),
+            }
+
+        except Exception as e:
+            self.logger.error(f"Artefact validation failed for {artefact_path}: {e}")
+            return {
+                "decision": "ERROR",
+                "confidence_score": 0,
+                "issues": [f"Validation error: {str(e)}"],
+                "recommendations": [],
+            }

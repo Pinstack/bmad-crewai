@@ -1,0 +1,43 @@
+schema: 1
+story: '3.2'
+story_title: 'Advanced Workflow Orchestration'
+gate: PASS
+status_reason: 'Comprehensive implementation with excellent test coverage, proper error handling, and all acceptance criteria met. Advanced features well-integrated with existing architecture.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2025-09-18T08:30:42Z'
+
+top_issues: []
+waiver: { active: false }
+
+# Extended fields
+quality_score: 95
+expires: '2025-10-18T08:30:42Z'
+
+evidence:
+  tests_reviewed: 60
+  risks_identified: 0
+  trace:
+    ac_covered: [1, 2, 3, 4, 5]
+    ac_gaps: []
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'No security vulnerabilities identified in workflow execution and agent assignment logic'
+  performance:
+    status: PASS
+    notes: 'Efficient conditional evaluation, proper resource management, and optimized agent selection algorithms'
+  reliability:
+    status: PASS
+    notes: 'Comprehensive error recovery with multiple strategies, proper state management, and graceful failure handling'
+  maintainability:
+    status: PASS
+    notes: 'Well-structured code with clear separation of concerns, comprehensive documentation, and extensive test coverage'
+
+recommendations:
+  immediate: []
+  future:
+    - action: 'Consider adding workflow execution metrics to external monitoring systems'
+      refs: ['src/bmad_crewai/workflow_visualizer.py']
+    - action: 'Add support for workflow templates with pre-defined conditional patterns'
+      refs: ['src/bmad_crewai/crewai_engine.py']

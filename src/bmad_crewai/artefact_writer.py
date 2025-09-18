@@ -4,7 +4,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,10 @@ class BMADArtefactWriter:
 
         # Initialize artefact metadata tracking
         self.artefact_metadata = {}
+
+        # Initialize quality metrics tracking
+        self.quality_metrics = {}
+        self.revision_tracking = {}
 
     def validate_artefact_naming_conventions(
         self, artefact_type: str, filename: str
@@ -923,3 +927,542 @@ class BMADArtefactWriter:
         except Exception as e:
             logger.error(f"Content validation failed for {artefact_type}: {e}")
             return False
+
+    # Quality metrics tracking methods for monitoring and analytics
+
+    def track_quality_metrics(
+        self, artefact_path: str, quality_score: float, revision_count: int
+    ) -> bool:
+        """
+        Track artefact quality metrics for monitoring and analytics.
+
+        Args:
+            artefact_path: Path to the artefact
+            quality_score: Quality score (0-100)
+            revision_count: Number of revisions made
+
+        Returns:
+            bool: True if tracking successful, False otherwise
+        """
+        try:
+            artefact_key = str(artefact_path)
+
+            # Initialize quality tracking if not exists
+            if artefact_key not in self.quality_metrics:
+                self.quality_metrics[artefact_key] = {
+                    "creation_time": None,
+                    "quality_scores": [],
+                    "revision_counts": [],
+                    "validation_attempts": [],
+                    "quality_trends": [],
+                    "lifecycle_stage": "created",
+                    "last_updated": None,
+                }
+
+            quality_data = self.quality_metrics[artefact_key]
+
+            # Set creation time if not set
+            if quality_data["creation_time"] is None:
+                quality_data["creation_time"] = datetime.now().isoformat()
+
+            # Track quality score history
+            quality_data["quality_scores"].append(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "score": quality_score,
+                }
+            )
+
+            # Track revision history
+            quality_data["revision_counts"].append(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "count": revision_count,
+                }
+            )
+
+            # Update metadata
+            quality_data["last_updated"] = datetime.now().isoformat()
+            quality_data["lifecycle_stage"] = self._determine_lifecycle_stage(
+                quality_data
+            )
+
+            # Calculate quality trends
+            quality_data["quality_trends"] = self._calculate_quality_trends(
+                quality_data
+            )
+
+            logger.info(
+                f"Tracked quality metrics for {artefact_path}: score={quality_score}, revisions={revision_count}"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to track quality metrics for {artefact_path}: {e}")
+            return False
+
+    def _determine_lifecycle_stage(self, quality_data: Dict[str, Any]) -> str:
+        """Determine the lifecycle stage of an artefact based on its history."""
+        scores = [entry["score"] for entry in quality_data.get("quality_scores", [])]
+        revisions = [
+            entry["count"] for entry in quality_data.get("revision_counts", [])
+        ]
+
+        if not scores:
+            return "created"
+
+        current_score = scores[-1]
+        initial_score = scores[0]
+        total_revisions = revisions[-1] if revisions else 0
+
+        # Determine stage based on score progression and revision count
+        if total_revisions == 0:
+            return "created"
+        elif current_score >= 90 and total_revisions <= 2:
+            return "approved"
+        elif current_score >= 80:
+            return "refined"
+        elif current_score >= 60:
+            return "in_progress"
+        elif current_score < 60 and total_revisions > 3:
+            return "needs_attention"
+        else:
+            return "draft"
+
+    def _calculate_quality_trends(self, quality_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate quality trends and patterns."""
+        scores = [entry["score"] for entry in quality_data.get("quality_scores", [])]
+        revisions = [
+            entry["count"] for entry in quality_data.get("revision_counts", [])
+        ]
+
+        if len(scores) < 2:
+            return {"trend": "insufficient_data", "direction": "stable"}
+
+        # Calculate trend direction
+        early_avg = sum(scores[: len(scores) // 2]) / (len(scores) // 2)
+        late_avg = sum(scores[len(scores) // 2 :]) / (len(scores) // 2)
+
+        if late_avg > early_avg + 5:
+            trend_direction = "improving"
+        elif late_avg < early_avg - 5:
+            trend_direction = "degrading"
+        else:
+            trend_direction = "stable"
+
+        # Calculate revision frequency
+        if len(revisions) >= 2:
+            revision_frequency = (revisions[-1] - revisions[0]) / len(revisions)
+        else:
+            revision_frequency = 0
+
+        return {
+            "trend": trend_direction,
+            "early_average": early_avg,
+            "late_average": late_avg,
+            "improvement_rate": late_avg - early_avg,
+            "revision_frequency": revision_frequency,
+            "stability_score": 100
+            - abs(late_avg - early_avg),  # Higher score = more stable
+        }
+
+    def get_artefact_quality_history(self, artefact_path: str) -> Dict[str, Any]:
+        """
+        Get comprehensive quality history for an artefact.
+
+        Args:
+            artefact_path: Path to the artefact
+
+        Returns:
+            Dictionary with quality history and trends
+        """
+        try:
+            artefact_key = str(artefact_path)
+
+            if artefact_key not in self.quality_metrics:
+                return {"error": f"No quality data available for {artefact_path}"}
+
+            quality_data = self.quality_metrics[artefact_key]
+
+            # Calculate summary statistics
+            scores = [
+                entry["score"] for entry in quality_data.get("quality_scores", [])
+            ]
+            revisions = [
+                entry["count"] for entry in quality_data.get("revision_counts", [])
+            ]
+
+            summary_stats = {}
+            if scores:
+                summary_stats = {
+                    "current_quality_score": scores[-1],
+                    "initial_quality_score": scores[0],
+                    "average_quality_score": sum(scores) / len(scores),
+                    "best_quality_score": max(scores),
+                    "worst_quality_score": min(scores),
+                    "quality_score_variance": (
+                        sum(
+                            (x - summary_stats.get("average_quality_score", 0)) ** 2
+                            for x in scores
+                        )
+                        / len(scores)
+                        if scores
+                        else 0
+                    ),
+                }
+
+            if revisions:
+                summary_stats.update(
+                    {
+                        "total_revisions": revisions[-1],
+                        "revision_rate": (
+                            revisions[-1] / len(revisions) if len(revisions) > 0 else 0
+                        ),
+                    }
+                )
+
+            return {
+                "artefact_path": artefact_key,
+                "creation_time": quality_data["creation_time"],
+                "last_updated": quality_data["last_updated"],
+                "lifecycle_stage": quality_data["lifecycle_stage"],
+                "quality_history": quality_data["quality_scores"],
+                "revision_history": quality_data["revision_counts"],
+                "quality_trends": quality_data["quality_trends"],
+                "summary_statistics": summary_stats,
+                "recommendations": self._generate_quality_recommendations(quality_data),
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get quality history for {artefact_path}: {e}")
+            return {"error": str(e)}
+
+    def _generate_quality_recommendations(
+        self, quality_data: Dict[str, Any]
+    ) -> List[str]:
+        """Generate recommendations based on quality data."""
+        recommendations = []
+        trends = quality_data.get("quality_trends", {})
+        lifecycle_stage = quality_data.get("lifecycle_stage", "unknown")
+
+        # Trend-based recommendations
+        trend = trends.get("trend", "stable")
+        if trend == "degrading":
+            recommendations.append(
+                "Quality is declining - review recent changes and validation processes"
+            )
+        elif trend == "improving":
+            recommendations.append(
+                "Quality is improving - continue current quality practices"
+            )
+
+        # Lifecycle-based recommendations
+        if lifecycle_stage == "needs_attention":
+            recommendations.append(
+                "Artefact needs significant quality improvement - consider rework"
+            )
+        elif lifecycle_stage == "draft":
+            recommendations.append(
+                "Artefact is still in draft stage - focus on quality validation"
+            )
+        elif lifecycle_stage == "approved":
+            recommendations.append(
+                "Artefact has been approved - monitor for quality maintenance"
+            )
+
+        # Stability recommendations
+        stability_score = trends.get("stability_score", 100)
+        if stability_score < 70:
+            recommendations.append(
+                "Quality is unstable - implement quality gates and review processes"
+            )
+
+        return recommendations
+
+    def get_artefact_lifecycle_metrics(self, artefact_path: str) -> Dict[str, Any]:
+        """
+        Get lifecycle metrics for artefact creation to final approval.
+
+        Args:
+            artefact_path: Path to the artefact
+
+        Returns:
+            Dictionary with lifecycle metrics
+        """
+        try:
+            artefact_key = str(artefact_path)
+
+            if artefact_key not in self.quality_metrics:
+                return {"error": f"No lifecycle data available for {artefact_path}"}
+
+            quality_data = self.quality_metrics[artefact_key]
+            scores = quality_data.get("quality_scores", [])
+            revisions = quality_data.get("revision_counts", [])
+
+            if not scores:
+                return {"lifecycle_status": "not_started"}
+
+            # Calculate lifecycle metrics
+            creation_time = datetime.fromisoformat(quality_data["creation_time"])
+            last_update = datetime.fromisoformat(quality_data["last_updated"])
+
+            lifecycle_duration = (
+                last_update - creation_time
+            ).total_seconds() / 3600  # hours
+
+            # Quality progression
+            quality_progression = []
+            for i, score_entry in enumerate(scores):
+                quality_progression.append(
+                    {
+                        "stage": i + 1,
+                        "quality_score": score_entry["score"],
+                        "timestamp": score_entry["timestamp"],
+                        "revisions_at_stage": (
+                            revisions[i]["count"] if i < len(revisions) else 0
+                        ),
+                    }
+                )
+
+            # Calculate approval readiness
+            current_score = scores[-1]["score"]
+            total_revisions = revisions[-1]["count"] if revisions else 0
+
+            approval_readiness = "not_ready"
+            if current_score >= 90 and total_revisions <= 3:
+                approval_readiness = "ready"
+            elif current_score >= 80:
+                approval_readiness = "conditionally_ready"
+            elif current_score >= 60:
+                approval_readiness = "needs_improvement"
+
+            return {
+                "artefact_path": artefact_key,
+                "lifecycle_duration_hours": lifecycle_duration,
+                "total_revisions": total_revisions,
+                "quality_progression": quality_progression,
+                "approval_readiness": approval_readiness,
+                "lifecycle_stage": quality_data["lifecycle_stage"],
+                "quality_trends": quality_data["quality_trends"],
+                "maturity_score": self._calculate_maturity_score(quality_data),
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get lifecycle metrics for {artefact_path}: {e}")
+            return {"error": str(e)}
+
+    def _calculate_maturity_score(self, quality_data: Dict[str, Any]) -> float:
+        """Calculate artefact maturity score (0-100)."""
+        scores = [entry["score"] for entry in quality_data.get("quality_scores", [])]
+        revisions = [
+            entry["count"] for entry in quality_data.get("revision_counts", [])
+        ]
+
+        if not scores:
+            return 0.0
+
+        current_score = scores[-1]
+        total_revisions = revisions[-1] if revisions else 0
+
+        # Maturity factors: quality (60%), stability (30%), efficiency (10%)
+        quality_factor = current_score / 100 * 60
+        stability_factor = (
+            quality_data.get("quality_trends", {}).get("stability_score", 100)
+            / 100
+            * 30
+        )
+        efficiency_factor = (
+            max(0, 10 - total_revisions) / 10 * 10
+        )  # Fewer revisions = higher efficiency
+
+        return min(100.0, quality_factor + stability_factor + efficiency_factor)
+
+    def get_aggregated_quality_metrics(self) -> Dict[str, Any]:
+        """
+        Get aggregated quality metrics across all artefacts.
+
+        Returns:
+            Dictionary with aggregated quality statistics
+        """
+        try:
+            if not self.quality_metrics:
+                return {"no_data": True}
+
+            all_scores = []
+            all_revisions = []
+            lifecycle_stages = {}
+            quality_trends = {"improving": 0, "stable": 0, "degrading": 0}
+
+            for artefact_key, quality_data in self.quality_metrics.items():
+                scores = [
+                    entry["score"] for entry in quality_data.get("quality_scores", [])
+                ]
+                revisions = [
+                    entry["count"] for entry in quality_data.get("revision_counts", [])
+                ]
+
+                if scores:
+                    all_scores.extend(scores)
+                if revisions:
+                    all_revisions.append(revisions[-1])
+
+                # Count lifecycle stages
+                stage = quality_data.get("lifecycle_stage", "unknown")
+                lifecycle_stages[stage] = lifecycle_stages.get(stage, 0) + 1
+
+                # Count trends
+                trend = quality_data.get("quality_trends", {}).get("trend", "stable")
+                if trend in quality_trends:
+                    quality_trends[trend] += 1
+
+            # Calculate aggregate statistics
+            aggregate_stats = {}
+            if all_scores:
+                aggregate_stats = {
+                    "average_quality_score": sum(all_scores) / len(all_scores),
+                    "median_quality_score": sorted(all_scores)[len(all_scores) // 2],
+                    "quality_score_range": f"{min(all_scores)} - {max(all_scores)}",
+                    "quality_distribution": {
+                        "excellent": len([s for s in all_scores if s >= 90]),
+                        "good": len([s for s in all_scores if 80 <= s < 90]),
+                        "fair": len([s for s in all_scores if 60 <= s < 80]),
+                        "poor": len([s for s in all_scores if s < 60]),
+                    },
+                }
+
+            if all_revisions:
+                aggregate_stats["average_revisions"] = sum(all_revisions) / len(
+                    all_revisions
+                )
+
+            return {
+                "total_artefacts_tracked": len(self.quality_metrics),
+                "lifecycle_stage_distribution": lifecycle_stages,
+                "quality_trend_distribution": quality_trends,
+                "aggregate_statistics": aggregate_stats,
+                "quality_health_score": self._calculate_quality_health_score(
+                    aggregate_stats
+                ),
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get aggregated quality metrics: {e}")
+            return {"error": str(e)}
+
+    def _calculate_quality_health_score(self, aggregate_stats: Dict[str, Any]) -> float:
+        """Calculate overall quality health score for the system (0-100)."""
+        if not aggregate_stats:
+            return 50.0
+
+        avg_score = aggregate_stats.get("average_quality_score", 50)
+        distribution = aggregate_stats.get("quality_distribution", {})
+
+        # Health factors: average score (50%), excellent artefacts (30%), poor artefacts penalty (20%)
+        score_factor = avg_score / 100 * 50
+        excellent_factor = (
+            distribution.get("excellent", 0) / max(1, sum(distribution.values())) * 30
+        )
+        poor_penalty = (
+            distribution.get("poor", 0) / max(1, sum(distribution.values())) * 20
+        )
+
+        return min(100.0, max(0.0, score_factor + excellent_factor - poor_penalty))
+
+    def list_artefacts_by_type(self, artefact_type: str) -> List[Dict[str, Any]]:
+        """
+        List artefacts of a specific type.
+
+        Args:
+            artefact_type: Type of artefacts to list
+
+        Returns:
+            List of artefact dictionaries
+        """
+        try:
+            artefacts = []
+            folder_path = self.FOLDER_MAPPING.get(artefact_type, artefact_type)
+
+            if artefact_type in ["stories", "qa_assessments", "qa_gates", "epics"]:
+                # Directory-based artefacts
+                search_path = self.base_path / folder_path
+                if search_path.exists():
+                    for file_path in search_path.rglob(
+                        "*.md" if artefact_type != "qa_gates" else "*.yml"
+                    ):
+                        artefacts.append(
+                            {
+                                "name": file_path.stem,
+                                "path": str(file_path.relative_to(self.base_path)),
+                                "type": artefact_type,
+                                "size": (
+                                    file_path.stat().st_size
+                                    if file_path.exists()
+                                    else 0
+                                ),
+                                "modified": (
+                                    file_path.stat().st_mtime
+                                    if file_path.exists()
+                                    else None
+                                ),
+                            }
+                        )
+            else:
+                # Single file artefacts
+                file_path = self.base_path / folder_path
+                if file_path.exists():
+                    artefacts.append(
+                        {
+                            "name": file_path.stem,
+                            "path": str(file_path.relative_to(self.base_path)),
+                            "type": artefact_type,
+                            "size": file_path.stat().st_size,
+                            "modified": file_path.stat().st_mtime,
+                        }
+                    )
+
+            return artefacts
+        except Exception as e:
+            logger.error(f"Failed to list artefacts by type {artefact_type}: {e}")
+            return []
+
+    def list_all_artefacts(self) -> List[Dict[str, Any]]:
+        """
+        List all artefacts across all types.
+
+        Returns:
+            List of all artefact dictionaries
+        """
+        try:
+            all_artefacts = []
+            for artefact_type in self.FOLDER_MAPPING.keys():
+                artefacts = self.list_artefacts_by_type(artefact_type)
+                all_artefacts.extend(artefacts)
+            return all_artefacts
+        except Exception as e:
+            logger.error(f"Failed to list all artefacts: {e}")
+            return []
+
+    def read_artefact(self, artefact_path: str) -> str:
+        """
+        Read the contents of an artefact file.
+
+        Args:
+            artefact_path: Path to the artefact file (relative to project root)
+
+        Returns:
+            String contents of the artefact file
+
+        Raises:
+            FileNotFoundError: If the artefact file doesn't exist
+            Exception: For other reading errors
+        """
+        try:
+            file_path = self.base_path / artefact_path
+            if not file_path.exists():
+                raise FileNotFoundError(f"Artefact not found: {artefact_path}")
+
+            with open(file_path, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception as e:
+            logger.error(f"Failed to read artefact {artefact_path}: {e}")
+            raise

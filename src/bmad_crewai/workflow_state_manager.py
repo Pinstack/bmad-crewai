@@ -46,6 +46,23 @@ class WorkflowStateManager:
         self._lock = threading.RLock()
         self._active_workflows: Set[str] = set()
 
+        # Metrics storage for monitoring and analytics
+        self.metrics_storage = {}
+        self.performance_history = {}
+
+        # Retention policy configuration
+        self.retention_policies = {
+            "max_age_days": 30,
+            "max_entries_per_workflow": 100,
+            "compression_threshold_days": 7,
+            "auto_cleanup_interval_hours": 24,
+            "storage_limit_mb": 100,
+        }
+
+        # Cleanup scheduling
+        self.last_cleanup = datetime.now()
+        self.cleanup_enabled = True
+
         self.logger.info(
             f"WorkflowStateManager initialized with storage dir: {storage_dir}"
         )
@@ -861,3 +878,529 @@ class WorkflowStateManager:
             validation_result["issues"].append(f"Validation error: {str(e)}")
 
         return validation_result
+
+    # Metrics storage methods for monitoring and analytics
+
+    def store_workflow_metrics(
+        self,
+        workflow_id: str,
+        metrics_data: Dict[str, Any],
+        persist_to_disk: bool = True,
+    ) -> bool:
+        """
+        Store workflow performance metrics for monitoring and analytics.
+
+        Args:
+            workflow_id: Unique workflow identifier
+            metrics_data: Metrics data to store
+            persist_to_disk: Whether to persist to disk
+
+        Returns:
+            bool: True if storage successful, False otherwise
+        """
+        try:
+            with self._lock:
+                # Store in memory
+                self.metrics_storage[workflow_id] = {
+                    **metrics_data,
+                    "stored_at": datetime.now().isoformat(),
+                    "workflow_id": workflow_id,
+                }
+
+                # Update performance history
+                if workflow_id not in self.performance_history:
+                    self.performance_history[workflow_id] = []
+
+                # Extract key performance metrics
+                perf_entry = {
+                    "timestamp": datetime.now().isoformat(),
+                    "duration": metrics_data.get("duration"),
+                    "success_rate": metrics_data.get("task_success_rate", 0),
+                    "efficiency_score": metrics_data.get("efficiency_score", 0),
+                    "bottleneck_count": len(metrics_data.get("bottlenecks", [])),
+                }
+
+                self.performance_history[workflow_id].append(perf_entry)
+
+                # Apply retention policies to prevent unbounded growth
+                max_entries = self.retention_policies["max_entries_per_workflow"]
+                if len(self.performance_history[workflow_id]) > max_entries:
+                    # Keep most recent entries, compress older ones
+                    recent_entries = self.performance_history[workflow_id][
+                        -max_entries:
+                    ]
+                    self.performance_history[workflow_id] = recent_entries
+
+                # Check if automatic cleanup is due
+                if self.cleanup_enabled and self._should_run_cleanup():
+                    self._run_automatic_cleanup()
+
+                # Persist to disk if requested
+                if persist_to_disk:
+                    return self._persist_metrics_to_disk(workflow_id, metrics_data)
+                else:
+                    self.logger.debug(
+                        f"Stored metrics for workflow {workflow_id} (in-memory only)"
+                    )
+                    return True
+
+        except Exception as e:
+            self.logger.error(
+                f"Failed to store metrics for workflow {workflow_id}: {e}"
+            )
+            return False
+
+    def _persist_metrics_to_disk(
+        self, workflow_id: str, metrics_data: Dict[str, Any]
+    ) -> bool:
+        """Persist metrics data to disk storage."""
+        try:
+            metrics_file = self.storage_dir / f"{workflow_id}_metrics.json"
+            enriched_metrics = {
+                **metrics_data,
+                "_metadata": {
+                    "workflow_id": workflow_id,
+                    "stored_at": datetime.now().isoformat(),
+                    "version": "1.0",
+                },
+            }
+
+            with open(metrics_file, "w", encoding="utf-8") as f:
+                json.dump(
+                    enriched_metrics, f, indent=2, ensure_ascii=False, default=str
+                )
+
+            self.logger.debug(f"Persisted metrics to disk: {metrics_file}")
+            return True
+
+        except Exception as e:
+            self.logger.error(
+                f"Failed to persist metrics to disk for {workflow_id}: {e}"
+            )
+            return False
+
+    def retrieve_workflow_metrics(self, workflow_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve stored workflow metrics.
+
+        Args:
+            workflow_id: Workflow identifier
+
+        Returns:
+            Dictionary with metrics data or None if not found
+        """
+        try:
+            # First try in-memory storage
+            if workflow_id in self.metrics_storage:
+                return self.metrics_storage[workflow_id]
+
+            # Try disk storage
+            metrics_file = self.storage_dir / f"{workflow_id}_metrics.json"
+            if metrics_file.exists():
+                with open(metrics_file, "r", encoding="utf-8") as f:
+                    metrics_data = json.load(f)
+
+                # Store in memory for faster future access
+                self.metrics_storage[workflow_id] = metrics_data
+                return metrics_data
+
+            return None
+
+        except Exception as e:
+            self.logger.error(
+                f"Failed to retrieve metrics for workflow {workflow_id}: {e}"
+            )
+            return None
+
+    def get_workflow_performance_history(
+        self, workflow_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Get performance history for a workflow.
+
+        Args:
+            workflow_id: Workflow identifier
+
+        Returns:
+            List of performance history entries
+        """
+        try:
+            history = self.performance_history.get(workflow_id, [])
+
+            # If no in-memory history, try to reconstruct from stored metrics
+            if not history:
+                metrics = self.retrieve_workflow_metrics(workflow_id)
+                if metrics:
+                    # Create a single history entry from stored metrics
+                    history = [
+                        {
+                            "timestamp": metrics.get(
+                                "timestamp", datetime.now().isoformat()
+                            ),
+                            "duration": metrics.get("duration"),
+                            "success_rate": metrics.get("task_success_rate", 0),
+                            "efficiency_score": metrics.get("efficiency_score", 0),
+                            "bottleneck_count": len(metrics.get("bottlenecks", [])),
+                        }
+                    ]
+
+            return history
+
+        except Exception as e:
+            self.logger.error(
+                f"Failed to get performance history for {workflow_id}: {e}"
+            )
+            return []
+
+    def get_aggregated_metrics(
+        self,
+        workflow_ids: Optional[List[str]] = None,
+        time_range_hours: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get aggregated metrics across multiple workflows.
+
+        Args:
+            workflow_ids: Optional list of workflow IDs to aggregate
+            time_range_hours: Optional time range filter in hours
+
+        Returns:
+            Dictionary with aggregated metrics
+        """
+        try:
+            if workflow_ids is None:
+                workflow_ids = list(self.performance_history.keys())
+
+            all_metrics = []
+            cutoff_time = None
+
+            if time_range_hours:
+                cutoff_time = datetime.now().timestamp() - (time_range_hours * 3600)
+
+            for workflow_id in workflow_ids:
+                history = self.get_workflow_performance_history(workflow_id)
+
+                for entry in history:
+                    if cutoff_time:
+                        try:
+                            entry_time = datetime.fromisoformat(
+                                entry["timestamp"]
+                            ).timestamp()
+                            if entry_time < cutoff_time:
+                                continue
+                        except (ValueError, KeyError):
+                            continue
+
+                    all_metrics.append(entry)
+
+            if not all_metrics:
+                return {"no_data": True}
+
+            # Calculate aggregations
+            durations = [m["duration"] for m in all_metrics if m.get("duration")]
+            success_rates = [
+                m["success_rate"] for m in all_metrics if m.get("success_rate")
+            ]
+            efficiency_scores = [
+                m["efficiency_score"] for m in all_metrics if m.get("efficiency_score")
+            ]
+            bottleneck_counts = [
+                m["bottleneck_count"]
+                for m in all_metrics
+                if m.get("bottleneck_count") is not None
+            ]
+
+            aggregated = {
+                "total_workflows": len(workflow_ids),
+                "total_measurements": len(all_metrics),
+                "time_range_hours": time_range_hours,
+            }
+
+            if durations:
+                aggregated.update(
+                    {
+                        "average_duration": sum(durations) / len(durations),
+                        "min_duration": min(durations),
+                        "max_duration": max(durations),
+                    }
+                )
+
+            if success_rates:
+                aggregated["average_success_rate"] = sum(success_rates) / len(
+                    success_rates
+                )
+
+            if efficiency_scores:
+                aggregated["average_efficiency_score"] = sum(efficiency_scores) / len(
+                    efficiency_scores
+                )
+
+            if bottleneck_counts:
+                aggregated["total_bottlenecks"] = sum(bottleneck_counts)
+                aggregated["average_bottlenecks_per_workflow"] = sum(
+                    bottleneck_counts
+                ) / len(bottleneck_counts)
+
+            return aggregated
+
+        except Exception as e:
+            self.logger.error(f"Failed to get aggregated metrics: {e}")
+            return {"error": str(e)}
+
+    def _should_run_cleanup(self) -> bool:
+        """Check if automatic cleanup should be run based on schedule."""
+        if not self.cleanup_enabled:
+            return False
+
+        time_since_last_cleanup = datetime.now() - self.last_cleanup
+        cleanup_interval_hours = self.retention_policies["auto_cleanup_interval_hours"]
+
+        return time_since_last_cleanup.total_seconds() >= (
+            cleanup_interval_hours * 3600
+        )
+
+    def _run_automatic_cleanup(self) -> None:
+        """Run automatic cleanup based on retention policies."""
+        try:
+            self.logger.info("Running automatic metrics cleanup")
+
+            # Run cleanup with configured policies
+            max_age_days = self.retention_policies["max_age_days"]
+            cleaned_count = self.cleanup_old_metrics(max_age_days)
+
+            # Check storage usage and compress if needed
+            storage_usage = self._get_storage_usage_mb()
+            storage_limit = self.retention_policies["storage_limit_mb"]
+
+            if storage_usage > storage_limit:
+                self.logger.warning(
+                    f"Storage usage ({storage_usage:.1f}MB) exceeds limit ({storage_limit}MB)"
+                )
+                additional_cleaned = self._compress_old_metrics()
+                cleaned_count += additional_cleaned
+
+            self.last_cleanup = datetime.now()
+            self.logger.info(
+                f"Automatic cleanup completed: {cleaned_count} entries processed"
+            )
+
+        except Exception as e:
+            self.logger.error(f"Automatic cleanup failed: {e}")
+
+    def _get_storage_usage_mb(self) -> float:
+        """Get current storage usage in MB."""
+        try:
+            if not self.storage_dir.exists():
+                return 0.0
+
+            total_size = 0
+            for metrics_file in self.storage_dir.glob("*_metrics.json"):
+                try:
+                    total_size += metrics_file.stat().st_size
+                except OSError:
+                    continue
+
+            return total_size / (1024 * 1024)  # Convert to MB
+
+        except Exception as e:
+            self.logger.error(f"Failed to get storage usage: {e}")
+            return 0.0
+
+    def _compress_old_metrics(self) -> int:
+        """Compress old metrics data to reduce storage usage."""
+        try:
+            compression_threshold_days = self.retention_policies[
+                "compression_threshold_days"
+            ]
+            cutoff_time = datetime.now().timestamp() - (
+                compression_threshold_days * 24 * 3600
+            )
+
+            compressed_count = 0
+
+            for workflow_id, history in self.performance_history.items():
+                if len(history) > 10:  # Only compress if we have enough data
+                    # Keep recent entries uncompressed, compress older ones
+                    compressed_history = []
+                    for entry in history:
+                        try:
+                            entry_time = datetime.fromisoformat(
+                                entry["timestamp"]
+                            ).timestamp()
+
+                            if entry_time < cutoff_time:
+                                # Compress by keeping only essential fields
+                                compressed_entry = {
+                                    "timestamp": entry["timestamp"],
+                                    "duration": entry.get("duration"),
+                                    "success_rate": entry.get("success_rate"),
+                                    "efficiency_score": entry.get("efficiency_score"),
+                                    # Remove detailed bottleneck info to save space
+                                }
+                                compressed_history.append(compressed_entry)
+                                compressed_count += 1
+                            else:
+                                compressed_history.append(entry)
+
+                        except (ValueError, KeyError):
+                            compressed_history.append(entry)
+
+                    self.performance_history[workflow_id] = compressed_history
+
+            self.logger.info(f"Compressed {compressed_count} old metrics entries")
+            return compressed_count
+
+        except Exception as e:
+            self.logger.error(f"Failed to compress old metrics: {e}")
+            return 0
+
+    def configure_retention_policies(self, policies: Dict[str, Any]) -> bool:
+        """
+        Configure retention policies for metrics storage.
+
+        Args:
+            policies: Dictionary with retention policy settings
+
+        Returns:
+            bool: True if configuration successful
+        """
+        try:
+            # Validate policy values
+            if "max_age_days" in policies and policies["max_age_days"] <= 0:
+                raise ValueError("max_age_days must be positive")
+            if (
+                "max_entries_per_workflow" in policies
+                and policies["max_entries_per_workflow"] <= 0
+            ):
+                raise ValueError("max_entries_per_workflow must be positive")
+            if "storage_limit_mb" in policies and policies["storage_limit_mb"] <= 0:
+                raise ValueError("storage_limit_mb must be positive")
+
+            # Update policies
+            self.retention_policies.update(policies)
+            self.logger.info(f"Updated retention policies: {policies}")
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to configure retention policies: {e}")
+            return False
+
+    def get_storage_status(self) -> Dict[str, Any]:
+        """
+        Get detailed storage status and retention policy information.
+
+        Returns:
+            Dictionary with storage status information
+        """
+        try:
+            storage_usage_mb = self._get_storage_usage_mb()
+            total_workflows = len(self.performance_history)
+            total_entries = sum(
+                len(history) for history in self.performance_history.values()
+            )
+
+            # Calculate storage efficiency
+            storage_limit = self.retention_policies["storage_limit_mb"]
+            usage_percentage = (
+                (storage_usage_mb / storage_limit * 100) if storage_limit > 0 else 0
+            )
+
+            # Estimate cleanup impact
+            old_entries = 0
+            cutoff_time = datetime.now().timestamp() - (
+                self.retention_policies["max_age_days"] * 24 * 3600
+            )
+
+            for history in self.performance_history.values():
+                for entry in history:
+                    try:
+                        entry_time = datetime.fromisoformat(
+                            entry["timestamp"]
+                        ).timestamp()
+                        if entry_time < cutoff_time:
+                            old_entries += 1
+                    except (ValueError, KeyError):
+                        continue
+
+            return {
+                "storage_usage_mb": round(storage_usage_mb, 2),
+                "storage_limit_mb": storage_limit,
+                "usage_percentage": round(usage_percentage, 1),
+                "total_workflows": total_workflows,
+                "total_entries": total_entries,
+                "old_entries_count": old_entries,
+                "retention_policies": self.retention_policies.copy(),
+                "last_cleanup": (
+                    self.last_cleanup.isoformat() if self.last_cleanup else None
+                ),
+                "cleanup_enabled": self.cleanup_enabled,
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to get storage status: {e}")
+            return {"error": str(e)}
+
+    def cleanup_old_metrics(self, max_age_days: int = 30) -> int:
+        """
+        Clean up old metrics data to prevent unbounded storage growth.
+
+        Args:
+            max_age_days: Maximum age of metrics to keep (in days)
+
+        Returns:
+            Number of metrics entries cleaned up
+        """
+        try:
+            with self._lock:
+                cutoff_time = datetime.now().timestamp() - (max_age_days * 24 * 3600)
+                cleaned_count = 0
+
+                # Clean up in-memory storage
+                workflows_to_remove = []
+                for workflow_id, history in self.performance_history.items():
+                    # Keep only recent entries
+                    recent_history = []
+                    for entry in history:
+                        try:
+                            entry_time = datetime.fromisoformat(
+                                entry["timestamp"]
+                            ).timestamp()
+                            if entry_time > cutoff_time:
+                                recent_history.append(entry)
+                            else:
+                                cleaned_count += 1
+                        except (ValueError, KeyError):
+                            continue
+
+                    if recent_history:
+                        self.performance_history[workflow_id] = recent_history
+                    else:
+                        workflows_to_remove.append(workflow_id)
+
+                # Remove workflows with no recent history
+                for workflow_id in workflows_to_remove:
+                    del self.performance_history[workflow_id]
+
+                # Clean up disk files
+                if self.storage_dir.exists():
+                    for metrics_file in self.storage_dir.glob("*_metrics.json"):
+                        try:
+                            file_age = (
+                                datetime.now().timestamp()
+                                - metrics_file.stat().st_mtime
+                            )
+                            if file_age > (max_age_days * 24 * 3600):
+                                metrics_file.unlink()
+                                cleaned_count += 1
+                        except Exception as e:
+                            self.logger.warning(
+                                f"Failed to clean up metrics file {metrics_file}: {e}"
+                            )
+
+                self.logger.info(f"Cleaned up {cleaned_count} old metrics entries")
+                return cleaned_count
+
+        except Exception as e:
+            self.logger.error(f"Failed to cleanup old metrics: {e}")
+            return 0

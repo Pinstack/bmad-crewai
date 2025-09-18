@@ -4,7 +4,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import aiohttp
 import yaml
@@ -750,3 +750,561 @@ class BmadCrewAI:
             yield self
         finally:
             await self.close()
+
+
+class SystemHealthMonitor:
+    """
+    Monitors system health indicators and provides real-time health assessment.
+
+    This class tracks the health of all major system components and provides
+    alerting capabilities for health threshold violations.
+    """
+
+    def __init__(self, logger: Optional[logging.Logger] = None):
+        """
+        Initialize the system health monitor.
+
+        Args:
+            logger: Optional logger instance
+        """
+        self.logger = logger or logging.getLogger(__name__)
+        self.health_indicators = {}
+        self.alert_thresholds = {
+            "cpu_usage": 80.0,  # percentage
+            "memory_usage": 85.0,  # percentage
+            "disk_usage": 90.0,  # percentage
+            "error_rate": 5.0,  # percentage
+            "response_time": 2.0,  # seconds
+            "availability": 99.0,  # percentage
+        }
+        self.health_history = []
+        self.last_health_check = None
+
+    def register_component(
+        self,
+        component_name: str,
+        health_check_function: Callable[[], Dict[str, Any]],
+        alert_thresholds: Optional[Dict[str, float]] = None,
+    ) -> bool:
+        """
+        Register a component for health monitoring.
+
+        Args:
+            component_name: Name of the component to monitor
+            health_check_function: Function that returns health metrics
+            alert_thresholds: Optional custom alert thresholds
+
+        Returns:
+            bool: True if registration successful
+        """
+        try:
+            self.health_indicators[component_name] = {
+                "health_check": health_check_function,
+                "thresholds": alert_thresholds or self.alert_thresholds.copy(),
+                "last_check": None,
+                "status": "unknown",
+                "alerts": [],
+            }
+
+            self.logger.info(
+                f"Registered health monitoring for component: {component_name}"
+            )
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to register component {component_name}: {e}")
+            return False
+
+    def perform_health_check(
+        self, component_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Perform health check on specified component or all components.
+
+        Args:
+            component_name: Optional specific component to check
+
+        Returns:
+            Dictionary with health check results
+        """
+        try:
+            components_to_check = (
+                [component_name]
+                if component_name
+                else list(self.health_indicators.keys())
+            )
+            results = {}
+
+            for comp_name in components_to_check:
+                if comp_name not in self.health_indicators:
+                    results[comp_name] = {
+                        "error": f"Component {comp_name} not registered"
+                    }
+                    continue
+
+                component = self.health_indicators[comp_name]
+                health_check_func = component["health_check"]
+                thresholds = component["thresholds"]
+
+                try:
+                    # Execute health check
+                    health_data = health_check_func()
+
+                    # Assess health status
+                    status = self._assess_health_status(health_data, thresholds)
+
+                    # Check for alerts
+                    alerts = self._check_alerts(health_data, thresholds, comp_name)
+
+                    # Update component status
+                    component["last_check"] = datetime.now().isoformat()
+                    component["status"] = status
+                    if alerts:
+                        component["alerts"].extend(alerts)
+
+                    results[comp_name] = {
+                        "status": status,
+                        "timestamp": component["last_check"],
+                        "metrics": health_data,
+                        "alerts": alerts,
+                        "thresholds": thresholds,
+                    }
+
+                except Exception as e:
+                    results[comp_name] = {
+                        "status": "error",
+                        "error": str(e),
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                    self.logger.error(f"Health check failed for {comp_name}: {e}")
+
+            # Store overall health snapshot
+            self.last_health_check = datetime.now().isoformat()
+            overall_status = self._calculate_overall_status(results)
+            health_snapshot = {
+                "timestamp": self.last_health_check,
+                "overall_status": overall_status,
+                "component_results": results,
+            }
+            self.health_history.append(health_snapshot)
+
+            return {
+                "overall_status": overall_status,
+                "component_results": results,
+                "timestamp": self.last_health_check,
+            }
+
+        except Exception as e:
+            self.logger.error(f"Health check failed: {e}")
+            return {"error": str(e)}
+
+    def _assess_health_status(
+        self, health_data: Dict[str, Any], thresholds: Dict[str, float]
+    ) -> str:
+        """Assess the health status based on metrics and thresholds."""
+        critical_count = 0
+        warning_count = 0
+
+        for metric_name, threshold in thresholds.items():
+            if metric_name in health_data:
+                value = health_data[metric_name]
+
+                # Handle different metric types
+                if metric_name in [
+                    "cpu_usage",
+                    "memory_usage",
+                    "disk_usage",
+                    "error_rate",
+                ]:
+                    if value > threshold:
+                        critical_count += 1
+                    elif value > threshold * 0.8:  # 80% of threshold
+                        warning_count += 1
+                elif metric_name == "response_time":
+                    if value > threshold:
+                        critical_count += 1
+                    elif value > threshold * 0.8:
+                        warning_count += 1
+                elif metric_name == "availability":
+                    if value < threshold:
+                        critical_count += 1
+                    elif value < threshold * 1.05:  # 5% below threshold
+                        warning_count += 1
+
+        if critical_count > 0:
+            return "critical"
+        elif warning_count > 0:
+            return "warning"
+        else:
+            return "healthy"
+
+    def _check_alerts(
+        self,
+        health_data: Dict[str, Any],
+        thresholds: Dict[str, float],
+        component_name: str,
+    ) -> List[Dict[str, Any]]:
+        """Check for alert conditions and generate alerts."""
+        alerts = []
+
+        for metric_name, threshold in thresholds.items():
+            if metric_name in health_data:
+                value = health_data[metric_name]
+
+                alert_triggered = False
+                severity = "info"
+
+                # Determine if alert should be triggered
+                if metric_name in [
+                    "cpu_usage",
+                    "memory_usage",
+                    "disk_usage",
+                    "error_rate",
+                ]:
+                    if value > threshold:
+                        alert_triggered = True
+                        severity = "critical" if value > threshold * 1.2 else "warning"
+                elif metric_name == "response_time":
+                    if value > threshold:
+                        alert_triggered = True
+                        severity = "critical" if value > threshold * 1.5 else "warning"
+                elif metric_name == "availability":
+                    if value < threshold:
+                        alert_triggered = True
+                        severity = "critical" if value < threshold * 0.95 else "warning"
+
+                if alert_triggered:
+                    alert = {
+                        "timestamp": datetime.now().isoformat(),
+                        "component": component_name,
+                        "metric": metric_name,
+                        "value": value,
+                        "threshold": threshold,
+                        "severity": severity,
+                        "message": f"{metric_name} is {value} (threshold: {threshold})",
+                    }
+                    alerts.append(alert)
+
+                    self.logger.warning(
+                        f"Health alert for {component_name}: {metric_name} = {value} "
+                        f"(threshold: {threshold}) - Severity: {severity}"
+                    )
+
+        return alerts
+
+    def _calculate_overall_status(self, component_results: Dict[str, Any]) -> str:
+        """Calculate overall system health status."""
+        statuses = [
+            result.get("status", "unknown") for result in component_results.values()
+        ]
+
+        if "critical" in statuses:
+            return "critical"
+        elif "error" in statuses:
+            return "error"
+        elif "warning" in statuses:
+            return "warning"
+        elif all(status == "healthy" for status in statuses):
+            return "healthy"
+        else:
+            return "degraded"
+
+    def get_health_status(self) -> Dict[str, Any]:
+        """
+        Get comprehensive health status of all monitored components.
+
+        Returns:
+            Dictionary with complete health status
+        """
+        try:
+            # Perform fresh health checks
+            current_health = self.perform_health_check()
+
+            # Get health trends
+            trends = self._analyze_health_trends()
+
+            # Get active alerts
+            active_alerts = self._get_active_alerts()
+
+            return {
+                "overall_status": current_health.get("overall_status", "unknown"),
+                "last_check": self.last_health_check,
+                "component_status": current_health.get("component_results", {}),
+                "health_trends": trends,
+                "active_alerts": active_alerts,
+                "system_summary": self._generate_system_summary(
+                    current_health, trends, active_alerts
+                ),
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to get health status: {e}")
+            return {"error": str(e)}
+
+    def _analyze_health_trends(self) -> Dict[str, Any]:
+        """Analyze health trends over time."""
+        if len(self.health_history) < 2:
+            return {"insufficient_data": True}
+
+        recent_history = self.health_history[-10:]  # Last 10 health checks
+        status_counts = {
+            "healthy": 0,
+            "warning": 0,
+            "critical": 0,
+            "error": 0,
+            "degraded": 0,
+        }
+
+        for snapshot in recent_history:
+            status = snapshot.get("overall_status", "unknown")
+            if status in status_counts:
+                status_counts[status] += 1
+
+        # Calculate trend
+        healthy_percentage = status_counts["healthy"] / len(recent_history) * 100
+
+        if healthy_percentage >= 80:
+            trend = "stable_good"
+        elif healthy_percentage >= 60:
+            trend = "stable_fair"
+        elif healthy_percentage >= 40:
+            trend = "degrading"
+        else:
+            trend = "critical"
+
+        return {
+            "trend": trend,
+            "healthy_percentage": healthy_percentage,
+            "status_distribution": status_counts,
+            "analysis_period": len(recent_history),
+        }
+
+    def _get_active_alerts(self) -> List[Dict[str, Any]]:
+        """Get all currently active alerts."""
+        active_alerts = []
+
+        for component_name, component_data in self.health_indicators.items():
+            alerts = component_data.get("alerts", [])
+
+            # Filter to recent alerts (last 24 hours)
+            recent_alerts = []
+            cutoff_time = datetime.now().timestamp() - (24 * 3600)  # 24 hours ago
+
+            for alert in alerts:
+                try:
+                    alert_time = datetime.fromisoformat(alert["timestamp"]).timestamp()
+                    if alert_time > cutoff_time:
+                        recent_alerts.append(alert)
+                except (ValueError, KeyError):
+                    continue
+
+            active_alerts.extend(recent_alerts)
+
+        # Sort by severity and timestamp
+        severity_order = {"critical": 0, "warning": 1, "info": 2}
+        active_alerts.sort(
+            key=lambda x: (
+                severity_order.get(x.get("severity", "info"), 2),
+                x.get("timestamp", ""),
+            )
+        )
+
+        return active_alerts
+
+    def _generate_system_summary(
+        self,
+        current_health: Dict[str, Any],
+        trends: Dict[str, Any],
+        active_alerts: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Generate a summary of system health."""
+        component_results = current_health.get("component_results", {})
+        total_components = len(component_results)
+        healthy_components = sum(
+            1
+            for result in component_results.values()
+            if result.get("status") == "healthy"
+        )
+
+        summary = {
+            "total_components": total_components,
+            "healthy_components": healthy_components,
+            "health_percentage": (
+                (healthy_components / total_components * 100)
+                if total_components > 0
+                else 0
+            ),
+            "active_alerts_count": len(active_alerts),
+            "health_trend": trends.get("trend", "unknown"),
+            "critical_alerts": len(
+                [a for a in active_alerts if a.get("severity") == "critical"]
+            ),
+            "recommendations": self._generate_health_recommendations(
+                current_health, trends, active_alerts
+            ),
+        }
+
+        return summary
+
+    def _generate_health_recommendations(
+        self,
+        current_health: Dict[str, Any],
+        trends: Dict[str, Any],
+        active_alerts: List[Dict[str, Any]],
+    ) -> List[str]:
+        """Generate health recommendations based on current status."""
+        recommendations = []
+
+        overall_status = current_health.get("overall_status", "unknown")
+        trend = trends.get("trend", "unknown")
+        critical_alerts = [a for a in active_alerts if a.get("severity") == "critical"]
+
+        # Status-based recommendations
+        if overall_status == "critical":
+            recommendations.append(
+                "URGENT: System health is critical - immediate investigation required"
+            )
+        elif overall_status == "warning":
+            recommendations.append(
+                "System health needs attention - review warnings and take corrective action"
+            )
+
+        # Trend-based recommendations
+        if trend == "degrading":
+            recommendations.append(
+                "Health is trending downward - investigate root causes and implement fixes"
+            )
+        elif trend == "critical":
+            recommendations.append(
+                "Health status is consistently poor - consider system maintenance or restart"
+            )
+
+        # Alert-based recommendations
+        if critical_alerts:
+            recommendations.append(
+                f"Address {len(critical_alerts)} critical alerts immediately"
+            )
+
+        # General recommendations
+        if not recommendations:
+            if overall_status == "healthy":
+                recommendations.append("System health is good - continue monitoring")
+            else:
+                recommendations.append(
+                    "Review health metrics and consider optimization opportunities"
+                )
+
+        return recommendations
+
+    def clear_alerts(
+        self, component_name: Optional[str] = None, hours_old: int = 24
+    ) -> int:
+        """
+        Clear old alerts from the system.
+
+        Args:
+            component_name: Optional specific component to clear alerts for
+            hours_old: Remove alerts older than this many hours
+
+        Returns:
+            Number of alerts cleared
+        """
+        try:
+            cleared_count = 0
+            cutoff_time = datetime.now().timestamp() - (hours_old * 3600)
+
+            components_to_clear = (
+                [component_name]
+                if component_name
+                else list(self.health_indicators.keys())
+            )
+
+            for comp_name in components_to_clear:
+                if comp_name in self.health_indicators:
+                    component = self.health_indicators[comp_name]
+                    alerts = component.get("alerts", [])
+
+                    # Keep only recent alerts
+                    recent_alerts = []
+                    for alert in alerts:
+                        try:
+                            alert_time = datetime.fromisoformat(
+                                alert["timestamp"]
+                            ).timestamp()
+                            if alert_time > cutoff_time:
+                                recent_alerts.append(alert)
+                            else:
+                                cleared_count += 1
+                        except (ValueError, KeyError):
+                            cleared_count += 1
+
+                    component["alerts"] = recent_alerts
+
+            self.logger.info(f"Cleared {cleared_count} old alerts")
+            return cleared_count
+
+        except Exception as e:
+            self.logger.error(f"Failed to clear alerts: {e}")
+            return 0
+
+    def get_health_dashboard_data(self) -> Dict[str, Any]:
+        """
+        Get data formatted for health dashboard display.
+
+        Returns:
+            Dictionary with dashboard-ready data
+        """
+        try:
+            health_status = self.get_health_status()
+
+            dashboard_data = {
+                "overall_health": {
+                    "status": health_status.get("overall_status", "unknown"),
+                    "last_update": health_status.get("last_check"),
+                    "health_percentage": health_status.get("system_summary", {}).get(
+                        "health_percentage", 0
+                    ),
+                },
+                "component_health": [],
+                "alerts": {
+                    "critical": [],
+                    "warning": [],
+                    "info": [],
+                },
+                "trends": health_status.get("health_trends", {}),
+                "recommendations": health_status.get("system_summary", {}).get(
+                    "recommendations", []
+                ),
+            }
+
+            # Format component data
+            for comp_name, comp_data in health_status.get(
+                "component_status", {}
+            ).items():
+                dashboard_data["component_health"].append(
+                    {
+                        "name": comp_name,
+                        "status": comp_data.get("status", "unknown"),
+                        "last_check": comp_data.get("timestamp"),
+                        "alerts_count": len(comp_data.get("alerts", [])),
+                    }
+                )
+
+            # Categorize alerts
+            for alert in health_status.get("active_alerts", []):
+                severity = alert.get("severity", "info")
+                if severity in dashboard_data["alerts"]:
+                    dashboard_data["alerts"][severity].append(
+                        {
+                            "component": alert.get("component"),
+                            "metric": alert.get("metric"),
+                            "message": alert.get("message"),
+                            "timestamp": alert.get("timestamp"),
+                        }
+                    )
+
+            return dashboard_data
+
+        except Exception as e:
+            self.logger.error(f"Failed to get dashboard data: {e}")
+            return {"error": str(e)}
