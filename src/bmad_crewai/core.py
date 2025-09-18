@@ -1,76 +1,313 @@
-"""Core BMAD CrewAI integration with rate limiting and error handling."""
+"""Main BMAD CrewAI integration orchestrator."""
 
 import asyncio
 import logging
-import time
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import aiohttp
 import yaml
-from aiohttp import ClientError, ClientTimeout
 
+from .agent_registry import AgentRegistry
+from .agent_wrappers import BmadAgentRegistry
+from .api_client import APIClient, APIError, RateLimiter, RateLimitError
+from .artefact_manager import ArtefactManager
+from .artefact_writer import BMADArtefactWriter
+from .checklist_executor import ChecklistExecutor
 from .config import APIConfig, ConfigManager
+
+# CrewAI Orchestration Components
+from .crewai_engine import CrewAIOrchestrationEngine
+from .development_tester import DevelopmentTester
+from .error_handler import BmadErrorHandler
+from .exceptions import TemplateError
+from .quality_gate_manager import QualityGateManager
+from .template_manager import TemplateInfo, TemplateManager
+from .workflow_manager import BmadWorkflowManager
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class RateLimitInfo:
-    """Rate limiting information for an API."""
+class BmadCrewAI:
+    """Main BMAD CrewAI integration class."""
 
-    requests_made: int = 0
-    window_start: float = field(default_factory=time.time)
-    backoff_until: Optional[float] = None
+    def __init__(self, config_file: Optional[str] = None):
+        # Initialize logger first
+        self.logger = logging.getLogger(__name__)
 
+        self.config_manager = ConfigManager(config_file)
+        self.rate_limiter = RateLimiter()
+        self.api_clients: Dict[str, APIClient] = {}
+        self.templates: Dict[str, TemplateInfo] = {}
 
-class APIError(Exception):
-    """Base exception for API-related errors."""
+        # Initialize managers
+        self.agent_registry = AgentRegistry()
+        self.artefact_manager = ArtefactManager()
+        self.development_tester = DevelopmentTester()
+        self.quality_gate_manager = QualityGateManager()
+        self.template_manager = TemplateManager()
 
-    def __init__(
-        self,
-        message: str,
-        status_code: Optional[int] = None,
-        retry_after: Optional[int] = None,
+        # Initialize CrewAI orchestration components
+        self.crewai_engine = CrewAIOrchestrationEngine(self.logger)
+        self.bmad_agent_registry = BmadAgentRegistry(self.logger)
+        self.workflow_manager = BmadWorkflowManager(self.crewai_engine, self.logger)
+        self.error_handler = BmadErrorHandler(self.logger)
+
+        # Legacy attributes for backward compatibility
+        self.artefact_writer = self.artefact_manager.artefact_writer
+        self.checklist_executor = self.quality_gate_manager.checklist_executor
+        self.bmad_agents = self.agent_registry.bmad_agents
+        self.crew = self.agent_registry.crew
+
+        # Configure logging
+        self._setup_logging()
+
+    def _setup_logging(self):
+        """Set up logging configuration."""
+        log_config = self.config_manager._config["logging"]
+        logging.basicConfig(
+            level=getattr(logging, log_config["level"]), format=log_config["format"]
+        )
+
+    def get_api_client(self, provider: str) -> APIClient:
+        """Get or create API client for a provider."""
+        if provider not in self.api_clients:
+            api_config = self.config_manager.get_api_config(provider)
+
+            # Try to get API key from secure storage
+            api_key = self.config_manager.get_api_key(provider)
+            if api_key:
+                api_config.api_key = api_key
+
+            self.api_clients[provider] = APIClient(api_config)
+
+        return self.api_clients[provider]
+
+    async def make_api_request(
+        self, provider: str, method: str, url: str, **kwargs
+    ) -> aiohttp.ClientResponse:
+        """Make API request with rate limiting and error handling."""
+        try:
+            # Check global rate limit
+            api_config = self.config_manager.get_api_config(provider)
+            self.rate_limiter.check_rate_limit(
+                provider, api_config.rate_limit_requests, api_config.rate_limit_window
+            )
+
+            # Get client and make request
+            client = self.get_api_client(provider)
+            response = await getattr(client, method.lower())(url, **kwargs)
+
+            # Record successful request
+            self.rate_limiter.record_request(provider)
+
+            return response
+
+        except RateLimitError as e:
+            self.logger.warning(f"Rate limit error for {provider}: {e}")
+            # Set backoff if retry_after is provided
+            if hasattr(e, "retry_after") and e.retry_after:
+                self.rate_limiter.set_backoff(provider, e.retry_after)
+            raise
+        except APIError as e:
+            self.logger.error(f"API error for {provider}: {e}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Unexpected error for {provider}: {e}")
+            raise APIError(f"Unexpected error: {str(e)}") from e
+
+    # ===============================
+    # Template Management
+    # ===============================
+
+    def load_bmad_templates(self) -> Dict[str, TemplateInfo]:
+        """Load all BMAD templates from .bmad-core/templates/ directory.
+
+        Returns:
+            Dict[str, TemplateInfo]: Dictionary mapping template IDs to template info
+        """
+        return self.template_manager.load_templates()
+
+    def get_template(self, template_id: str) -> Optional[TemplateInfo]:
+        """Get a loaded template by ID.
+
+        Args:
+            template_id: Template identifier
+
+        Returns:
+            TemplateInfo or None: Template information if found
+        """
+        return self.template_manager.get_template(template_id)
+
+    def list_templates(self) -> Dict[str, Dict[str, Any]]:
+        """List all loaded templates with basic information.
+
+        Returns:
+            Dict[str, Dict[str, Any]]: Template summaries by ID
+        """
+        return self.template_manager.list_templates()
+
+    def validate_template_dependencies(self, template_id: str) -> bool:
+        """Validate that a template's dependencies are satisfied.
+
+        Args:
+            template_id: Template identifier to validate
+
+        Returns:
+            bool: True if dependencies are satisfied
+
+        Raises:
+            TemplateError: If dependencies are not satisfied
+        """
+        return self.template_manager.validate_template_dependencies(template_id)
+
+    # ===============================
+    # BMAD Agent Integration
+    # ===============================
+
+    def register_bmad_agents(self) -> bool:
+        """Register all BMAD agents with CrewAI.
+
+        Returns:
+            bool: True if registration successful
+        """
+        return self.agent_registry.register_bmad_agents()
+
+    def get_bmad_agent(self, agent_id: str):
+        """Get a registered BMAD agent by ID.
+
+        Args:
+            agent_id: Agent identifier (e.g., 'scrum-master', 'dev-agent')
+
+        Returns:
+            Agent object or None if not found
+        """
+        return self.agent_registry.get_bmad_agent(agent_id)
+
+    def list_bmad_agents(self):
+        """List all registered BMAD agents.
+
+        Returns:
+            Dict of agent information
+        """
+        return self.agent_registry.list_bmad_agents()
+
+    def test_agent_coordination(self):
+        """Test agent coordination and crew functionality.
+
+        Returns:
+            Dict with coordination test results
+        """
+        return self.agent_registry.test_agent_coordination()
+
+    # ===============================
+    # Artefact Management
+    # ===============================
+
+    def write_artefact(self, artefact_type: str, content: str, **kwargs) -> bool:
+        """Write artefact to BMAD folder structure.
+
+        Args:
+            artefact_type: Type of artefact ('prd', 'story', 'gate', 'assessment', 'epic')
+            content: Artefact content
+            **kwargs: Additional parameters for specific artefact types
+
+        Returns:
+            bool: True if successful
+        """
+        return self.artefact_manager.write_artefact(artefact_type, content, **kwargs)
+
+    def test_artefact_generation(self) -> Dict[str, Any]:
+        """Test artefact generation functionality.
+
+        Returns:
+            Dict with artefact generation test results
+        """
+        return self.artefact_manager.test_artefact_generation()
+
+    # ===============================
+    # Development Environment Testing
+    # ===============================
+
+    def test_development_environment(self):
+        """Test development environment configuration and capabilities.
+
+        Returns:
+            Dict with environment test results
+        """
+        return self.development_tester.test_development_environment()
+
+    # ===============================
+    # Quality Gates & Checklists
+    # ===============================
+
+    def test_quality_gates(self):
+        """Test quality gate and checklist execution framework.
+
+        Returns:
+            Dict with quality gate test results
+        """
+        return self.quality_gate_manager.test_quality_gates()
+
+    def execute_checklist(
+        self, checklist_id: str, context: Optional[Dict[str, Any]] = None
     ):
-        super().__init__(message)
-        self.status_code = status_code
-        self.retry_after = retry_after
+        """Execute a quality checklist.
 
+        Args:
+            checklist_id: ID of checklist to execute
+            context: Optional context data for validation
 
-class RateLimitError(APIError):
-    """Exception raised when rate limit is exceeded."""
+        Returns:
+            Dict with execution results
+        """
+        return self.quality_gate_manager.execute_checklist(checklist_id, context)
 
-    pass
+    def validate_gate(self, checklist_id: str, gate_type: str = "story"):
+        """Validate a quality gate using a checklist.
 
+        Args:
+            checklist_id: Checklist to use for validation
+            gate_type: Type of gate ('story', 'epic', 'sprint')
 
-@dataclass
-class TemplateInfo:
-    """Information about a loaded BMAD template."""
+        Returns:
+            Dict with gate validation results
+        """
+        return self.quality_gate_manager.validate_gate(checklist_id, gate_type)
 
-    id: str
-    name: str
-    version: str
-    template_path: Path
-    workflow_mode: str
-    sections: Dict[str, Any]
-    agent_config: Dict[str, Any]
+    def list_available_checklists(self):
+        """List all available checklists for quality gates.
 
+        Returns:
+            Dict with checklist information
+        """
+        return self.quality_gate_manager.list_available_checklists()
 
-class TemplateError(Exception):
-    """Exception raised when template loading or validation fails."""
+    def get_checklist_details(self, checklist_id: str):
+        """Get detailed information about a specific checklist.
 
-    pass
+        Args:
+            checklist_id: ID of checklist to retrieve
 
+        Returns:
+            Dict with checklist details or None if not found
+        """
+        return self.quality_gate_manager.get_checklist_details(checklist_id)
 
-class APIClient:
-    """HTTP client with rate limiting and error handling."""
+    async def close(self):
+        """Close all API clients."""
+        for client in self.api_clients.values():
+            await client.close()
+        self.api_clients.clear()
 
-    def __init__(
-        self, config: APIConfig, session: Optional[aiohttp.ClientSession] = None
-    ):
+    @asynccontextmanager
+    async def session(self):
+        """Context manager for BMAD CrewAI session."""
+        try:
+            yield self
+        finally:
+            await self.close()
         self.config = config
         self.session = session or aiohttp.ClientSession(
             timeout=ClientTimeout(total=config.timeout)
@@ -99,13 +336,16 @@ class APIClient:
             and now < self.rate_limit_info.backoff_until
         ):
             raise RateLimitError(
-                f"Rate limit backoff active. Retry after {self.rate_limit_info.backoff_until - now:.1f} seconds"
+                f"Rate limit backoff active. Retry after "
+                f"{self.rate_limit_info.backoff_until - now:.1f} seconds"
             )
 
         # Check request limit
         if self.rate_limit_info.requests_made >= self.config.rate_limit_requests:
             raise RateLimitError(
-                f"Rate limit exceeded: {self.rate_limit_info.requests_made}/{self.config.rate_limit_requests} "
+                f"Rate limit exceeded: "
+                f"{self.rate_limit_info.requests_made}/"
+                f"{self.config.rate_limit_requests} "
                 f"requests in {self.config.rate_limit_window}s window"
             )
 
@@ -163,13 +403,15 @@ class APIClient:
                         elif response.status >= 500:
                             # Server error - retry
                             raise APIError(
-                                f"Server error {response.status}: {await response.text()}",
+                                f"Server error {response.status}: "
+                                f"{await response.text()}",
                                 status_code=response.status,
                             )
                         else:
                             # Client error - don't retry
                             raise APIError(
-                                f"Client error {response.status}: {await response.text()}",
+                                f"Client error {response.status}: "
+                                f"{await response.text()}",
                                 status_code=response.status,
                             )
 
@@ -180,12 +422,14 @@ class APIClient:
                 if attempt < self.config.max_retries:
                     wait_time = 2**attempt  # Exponential backoff
                     logger.warning(
-                        f"Request failed (attempt {attempt + 1}): {e}. Retrying in {wait_time}s"
+                        f"Request failed (attempt {attempt + 1}): {e}. "
+                        f"Retrying in {wait_time}s"
                     )
                     await asyncio.sleep(wait_time)
                 else:
                     logger.error(
-                        f"Request failed after {self.config.max_retries + 1} attempts: {e}"
+                        f"Request failed after {self.config.max_retries + 1} "
+                        f"attempts: {e}"
                     )
                     raise APIError(f"Request failed after retries: {str(e)}") from e
             except RateLimitError:
@@ -246,7 +490,8 @@ class RateLimiter:
         if info.requests_made >= requests_per_window:
             raise RateLimitError(
                 f"Rate limit exceeded for {provider}: "
-                f"{info.requests_made}/{requests_per_window} requests in {window_seconds}s window"
+                f"{info.requests_made}/{requests_per_window} "
+                f"requests in {window_seconds}s window"
             )
 
     def record_request(self, provider: str) -> None:
@@ -260,251 +505,3 @@ class RateLimiter:
             self._rate_limits[provider] = RateLimitInfo()
 
         self._rate_limits[provider].backoff_until = time.time() + seconds
-
-
-class BmadCrewAI:
-    """Main BMAD CrewAI integration class."""
-
-    def __init__(self, config_file: Optional[str] = None):
-        self.config_manager = ConfigManager(config_file)
-        self.rate_limiter = RateLimiter()
-        self.api_clients: Dict[str, APIClient] = {}
-        self.templates: Dict[str, TemplateInfo] = {}
-        self.logger = logging.getLogger(__name__)
-
-        # Configure logging
-        self._setup_logging()
-
-    def _setup_logging(self):
-        """Set up logging configuration."""
-        log_config = self.config_manager._config["logging"]
-        logging.basicConfig(
-            level=getattr(logging, log_config["level"]), format=log_config["format"]
-        )
-
-    def get_api_client(self, provider: str) -> APIClient:
-        """Get or create API client for a provider."""
-        if provider not in self.api_clients:
-            api_config = self.config_manager.get_api_config(provider)
-
-            # Try to get API key from secure storage
-            api_key = self.config_manager.get_api_key(provider)
-            if api_key:
-                api_config.api_key = api_key
-
-            self.api_clients[provider] = APIClient(api_config)
-
-        return self.api_clients[provider]
-
-    async def make_api_request(
-        self, provider: str, method: str, url: str, **kwargs
-    ) -> aiohttp.ClientResponse:
-        """Make API request with rate limiting and error handling."""
-        try:
-            # Check global rate limit
-            api_config = self.config_manager.get_api_config(provider)
-            self.rate_limiter.check_rate_limit(
-                provider, api_config.rate_limit_requests, api_config.rate_limit_window
-            )
-
-            # Get client and make request
-            client = self.get_api_client(provider)
-            response = await getattr(client, method.lower())(url, **kwargs)
-
-            # Record successful request
-            self.rate_limiter.record_request(provider)
-
-            return response
-
-        except RateLimitError as e:
-            self.logger.warning(f"Rate limit error for {provider}: {e}")
-            # Set backoff if retry_after is provided
-            if hasattr(e, "retry_after") and e.retry_after:
-                self.rate_limiter.set_backoff(provider, e.retry_after)
-            raise
-        except APIError as e:
-            self.logger.error(f"API error for {provider}: {e}")
-            raise
-        except Exception as e:
-            self.logger.error(f"Unexpected error for {provider}: {e}")
-            raise APIError(f"Unexpected error: {str(e)}") from e
-
-    def load_bmad_templates(self) -> Dict[str, TemplateInfo]:
-        """Load all BMAD templates from .bmad-core/templates/ directory.
-
-        Returns:
-            Dict[str, TemplateInfo]: Dictionary mapping template IDs to template info
-
-        Raises:
-            TemplateError: If template loading or validation fails
-        """
-        templates_dir = Path(".bmad-core/templates")
-        if not templates_dir.exists():
-            raise TemplateError(f"BMAD templates directory not found: {templates_dir}")
-
-        self.logger.info(f"Loading BMAD templates from {templates_dir}")
-
-        for template_file in templates_dir.glob("*.yaml"):
-            try:
-                template_info = self._load_single_template(template_file)
-                self.templates[template_info.id] = template_info
-                self.logger.debug(f"Loaded template: {template_info.id} ({template_info.name})")
-            except Exception as e:
-                self.logger.error(f"Failed to load template {template_file}: {e}")
-                raise TemplateError(f"Template loading failed for {template_file}: {e}") from e
-
-        self.logger.info(f"Successfully loaded {len(self.templates)} BMAD templates")
-        return self.templates
-
-    def _load_single_template(self, template_path: Path) -> TemplateInfo:
-        """Load and validate a single BMAD template.
-
-        Args:
-            template_path: Path to the YAML template file
-
-        Returns:
-            TemplateInfo: Parsed and validated template information
-
-        Raises:
-            TemplateError: If template validation fails
-        """
-        try:
-            with open(template_path, 'r', encoding='utf-8') as f:
-                template_data = yaml.safe_load(f)
-        except yaml.YAMLError as e:
-            raise TemplateError(f"Invalid YAML syntax in {template_path}: {e}") from e
-        except FileNotFoundError:
-            raise TemplateError(f"Template file not found: {template_path}")
-
-        # Validate required fields
-        if not isinstance(template_data, dict):
-            raise TemplateError(f"Template must be a dictionary: {template_path}")
-
-        template_meta = template_data.get('template', {})
-        workflow = template_data.get('workflow', {})
-        sections = template_data.get('sections', [])
-        agent_config = template_data.get('agent_config', {})
-
-        # Validate required template metadata
-        required_fields = ['id', 'name', 'version']
-        for field in required_fields:
-            if field not in template_meta:
-                raise TemplateError(f"Missing required field '{field}' in template {template_path}")
-
-        # Validate template ID format
-        template_id = template_meta['id']
-        if not isinstance(template_id, str) or not template_id.strip():
-            raise TemplateError(f"Invalid template ID: {template_id}")
-
-        # Extract workflow mode
-        workflow_mode = workflow.get('mode', 'interactive')
-        if workflow_mode not in ['interactive', 'batch', 'automated']:
-            self.logger.warning(f"Unknown workflow mode '{workflow_mode}' in {template_path}, defaulting to 'interactive'")
-            workflow_mode = 'interactive'
-
-        # Validate sections structure
-        if not isinstance(sections, list):
-            raise TemplateError(f"Sections must be a list in template {template_path}")
-
-        # Convert sections list to dictionary by ID for easier access
-        sections_dict = {}
-        for section in sections:
-            if not isinstance(section, dict) or 'id' not in section:
-                raise TemplateError(f"Invalid section format in template {template_path}")
-            sections_dict[section['id']] = section
-
-        # Extract agent assignments and validate
-        editable_sections = agent_config.get('editable_sections', [])
-        if not isinstance(editable_sections, list):
-            raise TemplateError(f"editable_sections must be a list in template {template_path}")
-
-        # Validate agent ownership in sections
-        for section_id, section in sections_dict.items():
-            if 'owner' not in section:
-                self.logger.warning(f"Section '{section_id}' missing owner in {template_path}")
-            if 'editors' in section and not isinstance(section['editors'], list):
-                raise TemplateError(f"editors must be a list for section '{section_id}' in {template_path}")
-
-        return TemplateInfo(
-            id=template_meta['id'],
-            name=template_meta['name'],
-            version=template_meta['version'],
-            template_path=template_path,
-            workflow_mode=workflow_mode,
-            sections=sections_dict,
-            agent_config=agent_config
-        )
-
-    def get_template(self, template_id: str) -> Optional[TemplateInfo]:
-        """Get a loaded template by ID.
-
-        Args:
-            template_id: Template identifier
-
-        Returns:
-            TemplateInfo or None: Template information if found
-        """
-        return self.templates.get(template_id)
-
-    def list_templates(self) -> Dict[str, Dict[str, Any]]:
-        """List all loaded templates with basic information.
-
-        Returns:
-            Dict[str, Dict[str, Any]]: Template summaries by ID
-        """
-        return {
-            template_id: {
-                'name': info.name,
-                'version': info.version,
-                'workflow_mode': info.workflow_mode,
-                'sections_count': len(info.sections)
-            }
-            for template_id, info in self.templates.items()
-        }
-
-    def validate_template_dependencies(self, template_id: str) -> bool:
-        """Validate that a template's dependencies are satisfied.
-
-        Args:
-            template_id: Template identifier to validate
-
-        Returns:
-            bool: True if dependencies are satisfied
-
-        Raises:
-            TemplateError: If dependencies are not satisfied
-        """
-        template = self.get_template(template_id)
-        if not template:
-            raise TemplateError(f"Template not found: {template_id}")
-
-        # Check for required agent configurations
-        required_agents = ['scrum-master', 'product-owner', 'dev-agent', 'qa-agent', 'product-manager', 'architect']
-        available_agents = []  # In future, this could check actual agent availability
-
-        # For now, just log warnings about agent dependencies
-        for section_id, section in template.sections.items():
-            owner = section.get('owner')
-            if owner and owner not in required_agents:
-                self.logger.warning(f"Unknown agent '{owner}' required for section '{section_id}' in template {template_id}")
-
-        # Check for template-specific dependencies
-        workflow = template.workflow_mode
-        if workflow == 'automated' and not template.agent_config.get('allow_automated', False):
-            raise TemplateError(f"Template {template_id} has automated workflow but doesn't allow automated execution")
-
-        return True
-
-    async def close(self):
-        """Close all API clients."""
-        for client in self.api_clients.values():
-            await client.close()
-        self.api_clients.clear()
-
-    @asynccontextmanager
-    async def session(self):
-        """Context manager for BMAD CrewAI session."""
-        try:
-            yield self
-        finally:
-            await self.close()

@@ -72,14 +72,15 @@ async def test_api():
 
                     async with client:
                         if provider == "openai":
-                            result = await client.make_request(
+                            await client.make_request(
                                 "GET", "https://api.openai.com/v1/models"
                             )
                             print(f"✅ {provider.upper()} API working")
                         elif provider == "anthropic":
                             # Simple test request
                             print(
-                                f"✅ {provider.upper()} API configured (test skipped for MVP)"
+                                f"✅ {provider.upper()} API configured "
+                                f"(test skipped for MVP)"
                             )
                         else:
                             print(f"❌ Unknown provider: {provider}")

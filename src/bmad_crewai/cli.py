@@ -4,10 +4,10 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
-from .config import APIConfig, BMADConfig, ConfigManager
-from .core import BmadCrewAI, RateLimitInfo
+from .api_client import RateLimitInfo
+from .config import ConfigManager
+from .core import BmadCrewAI
 from .exceptions import BmadCrewAIError
 
 logger = logging.getLogger(__name__)
@@ -94,8 +94,8 @@ class CLI:
 
         # Check Python environment
         try:
-            import aiohttp
-            import keyring
+            __import__("aiohttp")
+            __import__("keyring")
 
             print("✅ Required packages available")
         except ImportError as e:
@@ -191,7 +191,8 @@ class CLI:
                 if provider == "openai":
                     url = "https://api.openai.com/v1/models"
                     headers = {
-                        "Authorization": f"Bearer {cli.bmad.config_manager.get_api_key(provider)}"
+                        "Authorization": f"Bearer "
+                        f"{cli.bmad.config_manager.get_api_key(provider)}"
                     }
                 elif provider == "anthropic":
                     url = "https://api.anthropic.com/v1/messages"
@@ -210,9 +211,10 @@ class CLI:
                             provider, "get", url, headers=headers
                         )
                         print(f"✅ Status: {response.status}")
-                        print(
-                            f"✅ Rate limit OK - {cli.bmad.rate_limiter._rate_limits.get(provider, RateLimitInfo()).requests_made} requests made"
-                        )
+                        requests_made = cli.bmad.rate_limiter._rate_limits.get(
+                            provider, RateLimitInfo()
+                        ).requests_made
+                        print(f"✅ Rate limit OK - {requests_made} requests made")
 
                     except Exception as e:
                         print(f"❌ Error: {e}")
@@ -241,7 +243,8 @@ class CLI:
         config_manager = ConfigManager()
         config_file = config_manager.config_file
         print(
-            f"Config File: {'✅ Exists' if config_file.exists() else '❌ Not found'} ({config_file})"
+            f"Config File: {'✅ Exists' if config_file.exists() else '❌ Not found'} "
+            f"({config_file})"
         )
 
         # Check credentials
@@ -261,7 +264,8 @@ class CLI:
         print("\nTo configure:")
         print("1. Run 'bmad-crewai setup' for initial setup")
         print(
-            "2. Run 'bmad-crewai config set-api-key <provider> <key>' to add API keys"
+            "2. Run 'bmad-crewai config set-api-key <provider> <key>' "
+            "to add API keys"
         )
         print("3. Run 'bmad-crewai test-api <provider>' to test connections")
 

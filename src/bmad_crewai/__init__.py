@@ -20,9 +20,15 @@ __version__ = "0.1.0"
 __author__ = "Raedmund"
 __email__ = "raedmund@example.com"
 
+from .agent_registry import AgentRegistry
+from .api_client import APIClient, RateLimiter
+from .artefact_manager import ArtefactManager
+from .artefact_writer import BMADArtefactWriter
+from .checklist_executor import ChecklistExecutor
 from .cli import CLI, main
 from .config import APIConfig, BMADConfig, ConfigManager, CredentialStore
-from .core import APIClient, BmadCrewAI, RateLimiter, TemplateInfo
+from .core import BmadCrewAI
+from .development_tester import DevelopmentTester
 from .exceptions import (
     AgentError,
     APIError,
@@ -35,6 +41,8 @@ from .exceptions import (
     ValidationError,
     WorkflowError,
 )
+from .quality_gate_manager import QualityGateManager
+from .template_manager import TemplateInfo, TemplateManager
 
 __all__ = [
     # Core classes
@@ -42,6 +50,15 @@ __all__ = [
     "APIClient",
     "RateLimiter",
     "TemplateInfo",
+    # Managers
+    "AgentRegistry",
+    "ArtefactManager",
+    "DevelopmentTester",
+    "QualityGateManager",
+    "TemplateManager",
+    # Artefact and checklist components
+    "BMADArtefactWriter",
+    "ChecklistExecutor",
     # Configuration
     "ConfigManager",
     "CredentialStore",

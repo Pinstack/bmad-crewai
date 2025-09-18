@@ -1,5 +1,7 @@
 """Custom exceptions for BMAD CrewAI."""
 
+from typing import Optional
+
 
 class BmadCrewAIError(Exception):
     """Base exception for BMAD CrewAI errors."""
@@ -22,7 +24,12 @@ class CredentialError(BmadCrewAIError):
 class APIError(BmadCrewAIError):
     """Raised when there's an API-related error."""
 
-    def __init__(self, message: str, status_code: int = None, retry_after: int = None):
+    def __init__(
+        self,
+        message: str,
+        status_code: Optional[int] = None,
+        retry_after: Optional[int] = None,
+    ):
         super().__init__(message)
         self.status_code = status_code
         self.retry_after = retry_after

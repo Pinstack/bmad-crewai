@@ -1,12 +1,11 @@
 """Secure configuration and credential management for BMAD CrewAI."""
 
-import base64
 import json
 import logging
 import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 import keyring
 from cryptography.fernet import Fernet
