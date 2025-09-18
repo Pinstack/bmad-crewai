@@ -295,6 +295,448 @@ class BmadCrewAI:
         """
         return self.quality_gate_manager.get_checklist_details(checklist_id)
 
+    def validate_gate_with_feedback(
+        self,
+        checklist_id: str,
+        gate_type: str = "story",
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Enhanced gate validation with comprehensive actionable feedback.
+
+        Args:
+            checklist_id: Checklist to use for validation
+            gate_type: Type of gate ('story', 'epic', 'sprint', 'release')
+            context: Optional context data including artefact content
+
+        Returns:
+            Dict with gate validation results and actionable feedback
+        """
+        try:
+            # Use the enhanced validation framework
+            gate_results = self.quality_gate_manager.validate_gate_with_decision(
+                checklist_id, gate_type, context
+            )
+
+            # Add workflow integration feedback
+            gate_results["workflow_integration"] = self._generate_workflow_feedback(
+                gate_results
+            )
+
+            self.logger.info(
+                f"Enhanced gate validation completed: {gate_results.get('decision', 'UNKNOWN')} "
+                f"with actionable feedback"
+            )
+
+            return gate_results
+
+        except Exception as e:
+            self.logger.error(f"Enhanced gate validation with feedback failed: {e}")
+            return {"error": str(e)}
+
+    def _generate_workflow_feedback(
+        self, gate_results: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Generate workflow-specific feedback based on gate results.
+
+        Args:
+            gate_results: Complete gate validation results
+
+        Returns:
+            Workflow integration feedback
+        """
+        decision = gate_results.get("decision", "UNKNOWN")
+        gate_type = gate_results.get("gate_type", "unknown")
+        feedback = {
+            "can_proceed": decision in ["PASS", "CONCERNS"],
+            "blocking_issues": decision == "FAIL",
+            "next_workflow_steps": [],
+            "team_notifications": [],
+            "escalation_required": False,
+            "escalation_reason": None,
+        }
+
+        # Determine next workflow steps based on decision and gate type
+        if decision == "PASS":
+            feedback["next_workflow_steps"] = self._get_pass_workflow_steps(gate_type)
+        elif decision == "CONCERNS":
+            feedback["next_workflow_steps"] = self._get_concerns_workflow_steps(
+                gate_type
+            )
+            feedback["team_notifications"] = self._get_concerns_notifications(
+                gate_results
+            )
+        elif decision == "FAIL":
+            feedback["next_workflow_steps"] = self._get_fail_workflow_steps(gate_type)
+            feedback["escalation_required"] = True
+            feedback["escalation_reason"] = (
+                "Quality gate failed - critical issues must be addressed"
+            )
+
+        # Add team notifications for critical issues
+        critical_issues = gate_results.get("critical_issues", [])
+        if critical_issues:
+            feedback["team_notifications"].extend(
+                self._generate_critical_issue_notifications(critical_issues, gate_type)
+            )
+
+        return feedback
+
+    def _get_pass_workflow_steps(self, gate_type: str) -> List[str]:
+        """Get workflow steps when gate passes."""
+        steps = {
+            "story": [
+                "Proceed to development implementation",
+                "Update sprint board with story status",
+                "Schedule testing when development complete",
+            ],
+            "epic": [
+                "Release epic for story development",
+                "Update product roadmap progress",
+                "Communicate readiness to development team",
+            ],
+            "sprint": [
+                "Proceed with sprint execution",
+                "Monitor velocity and quality metrics",
+                "Schedule sprint review and retrospective",
+            ],
+            "release": [
+                "Proceed with deployment preparation",
+                "Schedule release validation testing",
+                "Notify stakeholders of release readiness",
+            ],
+        }
+        return steps.get(gate_type, ["Proceed to next workflow phase"])
+
+    def _get_concerns_workflow_steps(self, gate_type: str) -> List[str]:
+        """Get workflow steps when gate passes with concerns."""
+        steps = {
+            "story": [
+                "Document identified concerns for development awareness",
+                "Proceed with development but track concerns",
+                "Schedule additional review after implementation",
+            ],
+            "epic": [
+                "Document concerns in epic description",
+                "Proceed but allocate time for concern resolution",
+                "Schedule follow-up quality check",
+            ],
+            "sprint": [
+                "Document sprint concerns for visibility",
+                "Proceed but monitor impact on deliverables",
+                "Address concerns in sprint retrospective",
+            ],
+            "release": [
+                "Document release concerns and mitigation plan",
+                "Proceed with caution and additional monitoring",
+                "Schedule post-release quality assessment",
+            ],
+        }
+        return steps.get(gate_type, ["Document concerns and proceed with caution"])
+
+    def _get_fail_workflow_steps(self, gate_type: str) -> List[str]:
+        """Get workflow steps when gate fails."""
+        steps = {
+            "story": [
+                "STOP: Address critical issues before development",
+                "Re-work story based on quality feedback",
+                "Re-submit for quality gate validation",
+            ],
+            "epic": [
+                "STOP: Epic cannot proceed until critical issues resolved",
+                "Review and revise epic requirements",
+                "Re-submit epic for quality validation",
+            ],
+            "sprint": [
+                "STOP: Sprint quality unacceptable",
+                "Address critical quality issues immediately",
+                "Re-plan sprint with quality improvements",
+            ],
+            "release": [
+                "STOP: Release blocked by quality issues",
+                "Address critical release-blocking issues",
+                "Re-schedule release after quality remediation",
+            ],
+        }
+        return steps.get(
+            gate_type, ["STOP: Address critical quality issues before proceeding"]
+        )
+
+    def _get_concerns_notifications(
+        self, gate_results: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Generate team notifications for concerns."""
+        notifications = []
+
+        # Notify development team about concerns
+        notifications.append(
+            {
+                "audience": "development_team",
+                "priority": "medium",
+                "message": "Quality concerns identified - review feedback before implementation",
+                "action_required": "Review assessment report and address concerns where applicable",
+            }
+        )
+
+        # Notify product owner about tracking needs
+        notifications.append(
+            {
+                "audience": "product_owner",
+                "priority": "medium",
+                "message": "Quality concerns require tracking and follow-up",
+                "action_required": "Ensure concerns are documented and tracked to resolution",
+            }
+        )
+
+        return notifications
+
+    def _generate_critical_issue_notifications(
+        self, critical_issues: List[Dict[str, Any]], gate_type: str
+    ) -> List[Dict[str, Any]]:
+        """Generate notifications for critical issues."""
+        notifications = []
+
+        # Group issues by severity
+        high_severity = [
+            issue for issue in critical_issues if issue.get("severity") == "high"
+        ]
+
+        if high_severity:
+            notifications.append(
+                {
+                    "audience": "quality_team",
+                    "priority": "high",
+                    "message": f"Critical quality issues found in {gate_type} - immediate attention required",
+                    "action_required": "Review and address all high-severity issues before proceeding",
+                    "issue_count": len(high_severity),
+                }
+            )
+
+        # Notify responsible team
+        responsible_team = (
+            "development_team" if gate_type == "story" else "product_team"
+        )
+        notifications.append(
+            {
+                "audience": responsible_team,
+                "priority": "high",
+                "message": f"Quality validation identified {len(critical_issues)} critical issues in {gate_type}",
+                "action_required": "Review assessment report and implement remediation plan",
+            }
+        )
+
+        return notifications
+
+    def get_actionable_quality_feedback(
+        self, gate_results: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Get comprehensive actionable feedback from quality gate results.
+
+        Args:
+            gate_results: Results from quality gate validation
+
+        Returns:
+            Structured actionable feedback for teams
+        """
+        feedback = {
+            "executive_summary": self._create_feedback_executive_summary(gate_results),
+            "immediate_actions": self._extract_immediate_actions(gate_results),
+            "team_responsibilities": self._assign_team_responsibilities(gate_results),
+            "timeline_expectations": self._establish_timeline_expectations(
+                gate_results
+            ),
+            "success_criteria": self._define_success_criteria(gate_results),
+            "communication_plan": self._create_communication_plan(gate_results),
+        }
+
+        return feedback
+
+    def _create_feedback_executive_summary(self, gate_results: Dict[str, Any]) -> str:
+        """Create executive summary of quality feedback."""
+        decision = gate_results.get("decision", "UNKNOWN")
+        gate_type = gate_results.get("gate_type", "unknown")
+        confidence = gate_results.get("confidence", 0)
+
+        summary = f"Quality Gate Result: {decision} for {gate_type} "
+        summary += f"(confidence: {confidence:.1f}). "
+
+        if decision == "PASS":
+            summary += "Ready to proceed with development."
+        elif decision == "CONCERNS":
+            summary += "Can proceed but requires attention to identified concerns."
+        else:
+            summary += "Blocked - critical issues must be resolved before proceeding."
+
+        return summary
+
+    def _extract_immediate_actions(
+        self, gate_results: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Extract immediate actions from gate results."""
+        actions = []
+        decision = gate_results.get("decision", "UNKNOWN")
+
+        # Add decision-based immediate actions
+        if decision == "FAIL":
+            actions.append(
+                {
+                    "action": "STOP all work on this item",
+                    "priority": "critical",
+                    "timeframe": "immediate",
+                    "owner": "all_teams",
+                }
+            )
+
+        # Add actions from assessment report
+        assessment_report = gate_results.get("assessment_report", {})
+        recommendations = assessment_report.get("recommendations", {})
+        immediate_actions = recommendations.get("immediate_actions", [])
+
+        actions.extend(immediate_actions)
+
+        return actions
+
+    def _assign_team_responsibilities(
+        self, gate_results: Dict[str, Any]
+    ) -> Dict[str, List[str]]:
+        """Assign responsibilities to different teams based on gate results."""
+        responsibilities = {
+            "development_team": [],
+            "product_team": [],
+            "quality_team": [],
+            "management": [],
+        }
+
+        decision = gate_results.get("decision", "UNKNOWN")
+        gate_type = gate_results.get("gate_type", "unknown")
+
+        # Base responsibilities by decision
+        if decision == "FAIL":
+            responsibilities["development_team"].append(
+                "Address all critical technical issues"
+            )
+            responsibilities["product_team"].append(
+                "Review and revise requirements if needed"
+            )
+            responsibilities["quality_team"].append(
+                "Provide detailed remediation guidance"
+            )
+            responsibilities["management"].append(
+                "Escalate blocking issues and resource needs"
+            )
+
+        elif decision == "CONCERNS":
+            responsibilities["development_team"].append(
+                "Review concerns and plan mitigation"
+            )
+            responsibilities["product_team"].append("Track concerns to resolution")
+            responsibilities["quality_team"].append(
+                "Monitor concern resolution progress"
+            )
+
+        # Add gate-type specific responsibilities
+        if gate_type == "story":
+            responsibilities["development_team"].append(
+                "Implement story with quality considerations"
+            )
+        elif gate_type == "epic":
+            responsibilities["product_team"].append(
+                "Ensure epic scope accounts for quality requirements"
+            )
+        elif gate_type == "sprint":
+            responsibilities["management"].append("Address sprint-level quality trends")
+        elif gate_type == "release":
+            responsibilities["management"].append(
+                "Make release decision considering quality status"
+            )
+
+        return responsibilities
+
+    def _establish_timeline_expectations(
+        self, gate_results: Dict[str, Any]
+    ) -> Dict[str, str]:
+        """Establish timeline expectations for quality remediation."""
+        timelines = {}
+        decision = gate_results.get("decision", "UNKNOWN")
+
+        if decision == "PASS":
+            timelines["next_steps"] = "Proceed immediately"
+            timelines["monitoring"] = "Standard quality monitoring during development"
+        elif decision == "CONCERNS":
+            timelines["concern_resolution"] = "Within current sprint/iteration"
+            timelines["follow_up_review"] = "After implementation completion"
+        elif decision == "FAIL":
+            timelines["critical_fixes"] = "Immediate - before any further work"
+            timelines["re_validation"] = "Within 24 hours after fixes"
+            timelines["maximum_resolution_time"] = "No more than 3 business days"
+
+        return timelines
+
+    def _define_success_criteria(self, gate_results: Dict[str, Any]) -> List[str]:
+        """Define success criteria for quality remediation."""
+        criteria = []
+        decision = gate_results.get("decision", "UNKNOWN")
+
+        # Base success criteria
+        criteria.append("All identified critical issues resolved")
+        criteria.append("Re-validation passes quality gate")
+        criteria.append("Team agreement on resolution adequacy")
+
+        if decision == "CONCERNS":
+            criteria.append("Concern mitigation plan documented and approved")
+            criteria.append("Risks of proceeding with concerns understood and accepted")
+
+        return criteria
+
+    def _create_communication_plan(
+        self, gate_results: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Create communication plan for quality gate results."""
+        communications = []
+
+        decision = gate_results.get("decision", "UNKNOWN")
+        gate_type = gate_results.get("gate_type", "unknown")
+
+        # Immediate notifications
+        if decision == "FAIL":
+            communications.append(
+                {
+                    "timing": "immediate",
+                    "audience": "all_stakeholders",
+                    "method": "direct_notification",
+                    "message": f"CRITICAL: {gate_type} quality gate FAILED - work stopped",
+                }
+            )
+
+        # Standard communications
+        communications.extend(
+            [
+                {
+                    "timing": "within_1_hour",
+                    "audience": "directly_involved_teams",
+                    "method": "slack_email",
+                    "message": f"Quality gate results for {gate_type}: {decision}",
+                },
+                {
+                    "timing": "daily_standup",
+                    "audience": "development_team",
+                    "method": "verbal_update",
+                    "message": "Quality gate status and any required actions",
+                },
+            ]
+        )
+
+        if decision == "CONCERNS":
+            communications.append(
+                {
+                    "timing": "sprint_planning",
+                    "audience": "product_team",
+                    "method": "meeting_discussion",
+                    "message": "Review quality concerns and mitigation planning",
+                }
+            )
+
+        return communications
+
     async def close(self):
         """Close all API clients."""
         for client in self.api_clients.values():

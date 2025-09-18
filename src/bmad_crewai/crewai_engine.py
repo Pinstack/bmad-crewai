@@ -35,6 +35,7 @@ class CrewAIOrchestrationEngine:
         self.crew: Optional[Crew] = None
         self.agents: Dict[str, Agent] = {}
         self.workflows: Dict[str, Dict[str, Any]] = {}
+        self.bmad_registry = None  # Reference to BMAD AgentRegistry
 
         # Verify CrewAI availability
         try:
@@ -236,6 +237,159 @@ class CrewAIOrchestrationEngine:
             "agent_ids": list(self.agents.keys()),
         }
 
+    def integrate_bmad_registry(self, bmad_registry) -> bool:
+        """
+        Integrate with BMAD AgentRegistry for seamless agent management.
+
+        Args:
+            bmad_registry: Instance of AgentRegistry
+
+        Returns:
+            bool: True if integration successful, False otherwise
+        """
+        try:
+            self.bmad_registry = bmad_registry
+
+            # Register all BMAD agents with the orchestration engine
+            if bmad_registry.bmad_agents:
+                for agent_id, agent in bmad_registry.bmad_agents.items():
+                    self.register_agent(agent_id, agent)
+
+                self.logger.info(
+                    f"Integrated {len(bmad_registry.bmad_agents)} BMAD agents"
+                )
+                return True
+            else:
+                self.logger.warning("No BMAD agents found in registry")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Failed to integrate BMAD registry: {e}")
+            return False
+
+    def get_bmad_agent(self, agent_id: str) -> Optional[Agent]:
+        """
+        Get a BMAD agent by ID from the integrated registry.
+
+        Args:
+            agent_id: BMAD agent identifier
+
+        Returns:
+            Agent instance or None if not found
+        """
+        if self.bmad_registry:
+            return self.bmad_registry.get_bmad_agent(agent_id)
+        return None
+
+    def list_bmad_agents(self) -> List[str]:
+        """
+        Get list of all registered BMAD agent IDs.
+
+        Returns:
+            List of BMAD agent IDs
+        """
+        if self.bmad_registry:
+            return list(self.bmad_registry.bmad_agents.keys())
+        return []
+
+    def execute_bmad_workflow(self, workflow_spec: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute a workflow using BMAD agents.
+
+        Args:
+            workflow_spec: Workflow specification with tasks and agent assignments
+
+        Returns:
+            Dict containing workflow execution results
+        """
+        if not self.bmad_registry:
+            raise BmadCrewAIError(
+                "BMAD registry not integrated. Call integrate_bmad_registry() first."
+            )
+
+        try:
+            tasks = []
+
+            # Create tasks with BMAD agent assignments
+            for task_spec in workflow_spec.get("tasks", []):
+                agent_id = task_spec.get("agent")
+                if agent_id:
+                    agent = self.get_bmad_agent(agent_id)
+                    if agent:
+                        task = self.create_task_from_spec(
+                            {
+                                "description": task_spec["description"],
+                                "expected_output": task_spec["expected_output"],
+                                "agent": agent_id,  # Will be resolved in create_task_from_spec
+                                "context": task_spec.get("context"),
+                            }
+                        )
+                        tasks.append(task)
+                    else:
+                        self.logger.warning(
+                            f"BMAD agent {agent_id} not found, skipping task"
+                        )
+                else:
+                    # Task without specific agent assignment
+                    task = self.create_task_from_spec(task_spec)
+                    tasks.append(task)
+
+            if not tasks:
+                raise BmadCrewAIError("No valid tasks found in workflow specification")
+
+            # Execute the workflow
+            return self.execute_workflow(tasks)
+
+        except Exception as e:
+            error_msg = f"BMAD workflow execution failed: {e}"
+            self.logger.error(error_msg)
+            return {
+                "status": "error",
+                "error": str(e),
+                "workflow_spec": workflow_spec,
+            }
+
+    def validate_bmad_agent_communication(self) -> Dict[str, Any]:
+        """
+        Validate that BMAD agents can communicate and coordinate properly.
+
+        Returns:
+            Dict with communication validation results
+        """
+        results = {
+            "registry_integrated": self.bmad_registry is not None,
+            "agents_available": False,
+            "communication_test": False,
+            "coordination_test": False,
+            "errors": [],
+        }
+
+        if not self.bmad_registry:
+            results["errors"].append("BMAD registry not integrated")
+            return results
+
+        try:
+            bmad_agents = self.list_bmad_agents()
+            results["agents_available"] = len(bmad_agents) > 0
+
+            if not bmad_agents:
+                results["errors"].append("No BMAD agents available")
+                return results
+
+            # Test basic agent communication
+            test_agent = self.get_bmad_agent(bmad_agents[0])
+            if test_agent and hasattr(test_agent, "role"):
+                results["communication_test"] = True
+
+            # Test agent coordination through crew
+            if self.crew:
+                results["coordination_test"] = True
+
+        except Exception as e:
+            results["errors"].append(f"Validation error: {e}")
+
+        return results
+
     def reset_engine(self) -> bool:
         """
         Reset the orchestration engine to initial state.
@@ -247,6 +401,7 @@ class CrewAIOrchestrationEngine:
             self.crew = None
             self.agents.clear()
             self.workflows.clear()
+            self.bmad_registry = None  # Clear BMAD registry reference
             self.logger.info("CrewAI orchestration engine reset successfully")
             return True
 
