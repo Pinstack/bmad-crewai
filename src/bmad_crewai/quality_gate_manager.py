@@ -28,7 +28,8 @@ class GateType(Enum):
 
 
 class QualityGateManager:
-    """Manager for quality gates and checklist execution with enhanced PASS/CONCERNS/FAIL decision framework."""
+    """Manager for quality gates and checklist execution with enhanced
+    PASS/CONCERNS/FAIL decision framework."""
 
     def __init__(self):
         self.checklist_executor = ChecklistExecutor()
@@ -59,10 +60,13 @@ class QualityGateManager:
             if "error" in execution_results:
                 return execution_results
 
-            # Determine gate decision based on execution results and gate type
-            gate_decision, rationale = self._determine_gate_decision(
+            # Determine gate decision using ChecklistExecutor authority API
+            decision_str, rationale = self.checklist_executor.determine_gate_decision(
                 execution_results, gate_type
             )
+
+            # Convert string decision to enum for backward compatibility
+            gate_decision = GateDecision(decision_str)
 
             # Build comprehensive gate results
             gate_results = {
@@ -134,7 +138,7 @@ class QualityGateManager:
     ) -> tuple[GateDecision, str]:
         """Determine story gate decision with focus on completeness and quality."""
         overall_score = execution_results.get("overall_score", 0)
-        sections = execution_results.get("sections", {})
+        # sections is not used in this method but kept for potential future use
 
         # Story gates are strict - must meet high standards
         if overall_score >= 0.95:
@@ -601,15 +605,58 @@ class QualityGateManager:
         # Check for broken markdown links
         import re
 
+        try:
+            from ..utils.path_alias import (
+                get_migration_guidance,
+                is_alias,
+                resolve_path,
+            )
+        except ImportError:
+            # Fallback for test environments
+            from bmad_crewai.utils.path_alias import (
+                get_migration_guidance,
+                is_alias,
+                resolve_path,
+            )
+
         links = re.findall(r"\[([^\]]+)\]\(([^)]+)\)", content)
 
         for link_text, link_target in links:
-            results["cross_references"].append(f"Link: {link_text} -> {link_target}")
+            original_target = link_target
 
-            # Basic validation - could be enhanced with actual file existence checks
-            if link_target.startswith("docs/") and not os.path.exists(link_target):
-                results["consistency_issues"].append(
-                    f"Potentially broken link: {link_target}"
+            # Resolve alias if present
+            if link_target.startswith("docs/"):
+                resolved_target = resolve_path(link_target)
+                if resolved_target != link_target:
+                    # Record the normalized target
+                    results["cross_references"].append(
+                        f"Link: {link_text} -> {original_target} (resolved to {resolved_target})"
+                    )
+                else:
+                    results["cross_references"].append(
+                        f"Link: {link_text} -> {link_target}"
+                    )
+
+                # Check existence of resolved target
+                if not os.path.exists(resolved_target):
+                    if is_alias(link_target):
+                        # Alias resolves to missing canonical - provide migration guidance
+                        guidance = get_migration_guidance(link_target)
+                        results["consistency_issues"].append(
+                            (
+                                f"Broken link (alias resolution): {original_target} -> "
+                                f"{resolved_target} does not exist. {guidance}"
+                            )
+                        )
+                    else:
+                        results["consistency_issues"].append(
+                            f"Potentially broken link: {resolved_target}"
+                        )
+                # Note: If alias resolves to existing canonical, no issue is reported
+            else:
+                # Non-docs links (relative, external, etc.)
+                results["cross_references"].append(
+                    f"Link: {link_text} -> {link_target}"
                 )
 
         return results
@@ -622,7 +669,7 @@ class QualityGateManager:
 
         # Example: Check if story references exist in related epic
         if artefact_type == "stories" and "epics" in related_artefacts:
-            epic_content = related_artefacts["epics"]
+            # epic_content is not used in this method but kept for potential future use
             # Simple check - story should reference its epic
             if "epic" not in content.lower():
                 results["consistency_issues"].append(

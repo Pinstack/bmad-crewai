@@ -52,7 +52,7 @@
   "execution_timeline": [
     {
       "type": "initialization",
-      "timestamp": "2025-09-18T12:57:08.650422",
+      "timestamp": "2025-09-19T19:02:02.319429",
       "description": "Conditional workflow performance_test initialized"
     }
   ],
@@ -60,12 +60,12 @@
     "completed": 10,
     "total": 10,
     "percentage": 100.0,
-    "last_updated": "2025-09-18T12:57:08.659307"
+    "last_updated": "2025-09-19T19:02:02.329333"
   },
   "checkpoints": [
     {
       "id": "checkpoint_0",
-      "timestamp": "2025-09-18T12:57:08.650859",
+      "timestamp": "2025-09-19T19:02:02.320122",
       "task_spec": {
         "description": "Task 0",
         "agent": "dev-agent"
@@ -83,7 +83,7 @@
     },
     {
       "id": "checkpoint_1",
-      "timestamp": "2025-09-18T12:57:08.651486",
+      "timestamp": "2025-09-19T19:02:02.320685",
       "task_spec": {
         "description": "Task 1",
         "agent": "qa-agent"
@@ -96,13 +96,13 @@
           "completed": 1,
           "total": 10,
           "percentage": 10.0,
-          "last_updated": "2025-09-18T12:57:08.651289"
+          "last_updated": "2025-09-19T19:02:02.320510"
         }
       }
     },
     {
       "id": "checkpoint_2",
-      "timestamp": "2025-09-18T12:57:08.652139",
+      "timestamp": "2025-09-19T19:02:02.321253",
       "task_spec": {
         "description": "Task 2",
         "agent": "architect"
@@ -115,13 +115,13 @@
           "completed": 2,
           "total": 10,
           "percentage": 20.0,
-          "last_updated": "2025-09-18T12:57:08.651916"
+          "last_updated": "2025-09-19T19:02:02.321068"
         }
       }
     },
     {
       "id": "checkpoint_3",
-      "timestamp": "2025-09-18T12:57:08.652699",
+      "timestamp": "2025-09-19T19:02:02.322034",
       "task_spec": {
         "description": "Task 3",
         "agent": "dev-agent"
@@ -134,13 +134,13 @@
           "completed": 3,
           "total": 10,
           "percentage": 30.0,
-          "last_updated": "2025-09-18T12:57:08.652520"
+          "last_updated": "2025-09-19T19:02:02.321784"
         }
       }
     },
     {
       "id": "checkpoint_4",
-      "timestamp": "2025-09-18T12:57:08.653803",
+      "timestamp": "2025-09-19T19:02:02.322928",
       "task_spec": {
         "description": "Task 4",
         "agent": "qa-agent"
@@ -153,13 +153,13 @@
           "completed": 4,
           "total": 10,
           "percentage": 40.0,
-          "last_updated": "2025-09-18T12:57:08.653214"
+          "last_updated": "2025-09-19T19:02:02.322503"
         }
       }
     },
     {
       "id": "checkpoint_5",
-      "timestamp": "2025-09-18T12:57:08.655320",
+      "timestamp": "2025-09-19T19:02:02.323777",
       "task_spec": {
         "description": "Task 5",
         "agent": "architect"
@@ -172,13 +172,13 @@
           "completed": 5,
           "total": 10,
           "percentage": 50.0,
-          "last_updated": "2025-09-18T12:57:08.654635"
+          "last_updated": "2025-09-19T19:02:02.323489"
         }
       }
     },
     {
       "id": "checkpoint_6",
-      "timestamp": "2025-09-18T12:57:08.656228",
+      "timestamp": "2025-09-19T19:02:02.324815",
       "task_spec": {
         "description": "Task 6",
         "agent": "dev-agent"
@@ -191,13 +191,13 @@
           "completed": 6,
           "total": 10,
           "percentage": 60.0,
-          "last_updated": "2025-09-18T12:57:08.655924"
+          "last_updated": "2025-09-19T19:02:02.324518"
         }
       }
     },
     {
       "id": "checkpoint_7",
-      "timestamp": "2025-09-18T12:57:08.657052",
+      "timestamp": "2025-09-19T19:02:02.325741",
       "task_spec": {
         "description": "Task 7",
         "agent": "qa-agent"
@@ -210,13 +210,13 @@
           "completed": 7,
           "total": 10,
           "percentage": 70.0,
-          "last_updated": "2025-09-18T12:57:08.656791"
+          "last_updated": "2025-09-19T19:02:02.325445"
         }
       }
     },
     {
       "id": "checkpoint_8",
-      "timestamp": "2025-09-18T12:57:08.657895",
+      "timestamp": "2025-09-19T19:02:02.326665",
       "task_spec": {
         "description": "Task 8",
         "agent": "architect"
@@ -229,13 +229,13 @@
           "completed": 8,
           "total": 10,
           "percentage": 80.0,
-          "last_updated": "2025-09-18T12:57:08.657629"
+          "last_updated": "2025-09-19T19:02:02.326350"
         }
       }
     },
     {
       "id": "checkpoint_9",
-      "timestamp": "2025-09-18T12:57:08.658727",
+      "timestamp": "2025-09-19T19:02:02.328649",
       "task_spec": {
         "description": "Task 9",
         "agent": "dev-agent"
@@ -248,7 +248,7 @@
           "completed": 9,
           "total": 10,
           "percentage": 90.0,
-          "last_updated": "2025-09-18T12:57:08.658448"
+          "last_updated": "2025-09-19T19:02:02.327297"
         }
       }
     }
@@ -258,10 +258,10 @@
   "error_recovery_attempts": [],
   "_metadata": {
     "workflow_id": "performance_test",
-    "timestamp": "2025-09-18T12:57:08.659599",
+    "timestamp": "2025-09-19T19:02:02.329678",
     "version": "1.0"
   },
-  "end_time": "2025-09-18T12:57:08.659594",
+  "end_time": "2025-09-19T19:02:02.329673",
   "result": {
     "status": "success",
     "workflow_id": "performance_test",
@@ -270,7 +270,7 @@
         "task_index": 0,
         "agent": "dev-agent",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.651229",
+        "timestamp": "2025-09-19T19:02:02.320456",
         "advanced_recovery": true,
         "artefacts_generated": {
           "generated": [],
@@ -284,7 +284,7 @@
         "task_index": 1,
         "agent": "qa-agent",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.651869",
+        "timestamp": "2025-09-19T19:02:02.321022",
         "advanced_recovery": true,
         "artefacts_generated": {
           "generated": [],
@@ -298,7 +298,7 @@
         "task_index": 2,
         "agent": "architect",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.652481",
+        "timestamp": "2025-09-19T19:02:02.321702",
         "advanced_recovery": true,
         "artefacts_generated": {
           "generated": [],
@@ -312,7 +312,7 @@
         "task_index": 3,
         "agent": "dev-agent",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.653161",
+        "timestamp": "2025-09-19T19:02:02.322454",
         "advanced_recovery": true,
         "artefacts_generated": {
           "generated": [],
@@ -326,7 +326,7 @@
         "task_index": 4,
         "agent": "qa-agent",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.654536",
+        "timestamp": "2025-09-19T19:02:02.323430",
         "advanced_recovery": true,
         "artefacts_generated": {
           "generated": [],
@@ -340,7 +340,7 @@
         "task_index": 5,
         "agent": "architect",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.655874",
+        "timestamp": "2025-09-19T19:02:02.324461",
         "advanced_recovery": true,
         "artefacts_generated": {
           "generated": [],
@@ -354,7 +354,7 @@
         "task_index": 6,
         "agent": "dev-agent",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.656706",
+        "timestamp": "2025-09-19T19:02:02.325393",
         "advanced_recovery": true,
         "artefacts_generated": {
           "generated": [],
@@ -368,7 +368,7 @@
         "task_index": 7,
         "agent": "qa-agent",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.657581",
+        "timestamp": "2025-09-19T19:02:02.326300",
         "advanced_recovery": true,
         "artefacts_generated": {
           "generated": [],
@@ -382,7 +382,7 @@
         "task_index": 8,
         "agent": "architect",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.658402",
+        "timestamp": "2025-09-19T19:02:02.327249",
         "advanced_recovery": true,
         "artefacts_generated": {
           "generated": [],
@@ -396,7 +396,7 @@
         "task_index": 9,
         "agent": "dev-agent",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.659262",
+        "timestamp": "2025-09-19T19:02:02.329278",
         "advanced_recovery": true,
         "artefacts_generated": {
           "generated": [],

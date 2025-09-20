@@ -783,11 +783,12 @@ class BmadWorkflowEngine:
         elif operator == "not_equals":
             return actual_value != value
         elif operator == "contains":
-            return (
-                value in actual_value
-                if isinstance(actual_value, (list, str))
-                else False
-            )
+            # Case-insensitive contains for strings; membership for lists
+            if isinstance(actual_value, str) and isinstance(value, str):
+                return value.lower() in actual_value.lower()
+            if isinstance(actual_value, list):
+                return value in actual_value
+            return False
         elif operator == "greater_than":
             return actual_value > value
         elif operator == "less_than":
@@ -802,7 +803,8 @@ class BmadWorkflowEngine:
         task_index = condition.get("task_index", -1)
         expected_status = condition.get("status", "success")
 
-        if task_index >= len(results.get("task_results", [])):
+        # Disallow negative indexes to avoid accidental last-element binding
+        if task_index < 0 or task_index >= len(results.get("task_results", [])):
             return False
 
         task_result = results["task_results"][task_index]
@@ -810,13 +812,14 @@ class BmadWorkflowEngine:
 
     def _evaluate_time_condition(self, condition: Dict[str, Any]) -> bool:
         """Evaluate time-based condition."""
-        import time
-
         current_hour = datetime.now().hour
         start_hour = condition.get("start_hour", 0)
         end_hour = condition.get("end_hour", 23)
-
-        return start_hour <= current_hour <= end_hour
+        # Support wrap-around windows (e.g., 22 -> 02)
+        if start_hour <= end_hour:
+            return start_hour <= current_hour <= end_hour
+        else:
+            return current_hour >= start_hour or current_hour <= end_hour
 
     def _evaluate_dependency_condition(
         self,

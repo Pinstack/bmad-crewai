@@ -1,0 +1,34 @@
+schema: 1
+story: "3.6"
+story_title: "Single Gate Decision Source (Course-Correct)"
+gate: PASS
+status_reason: "All acceptance criteria met with comprehensive test coverage and clean implementation"
+reviewer: "Quinn (Test Architect)"
+updated: "2025-09-20T12:00:00Z"
+top_issues: []
+waiver: { active: false }
+quality_score: 95
+evidence:
+  tests_reviewed: 25
+  risks_identified: 0
+  trace:
+    ac_covered: [1, 2, 3, 4, 5]
+    ac_gaps: []
+nfr_validation:
+  security:
+    status: PASS
+    notes: "No security concerns in authority API implementation"
+  performance:
+    status: PASS
+    notes: "Gate decision computation remains efficient"
+  reliability:
+    status: PASS
+    notes: "Robust error handling and fallback logic implemented"
+  maintainability:
+    status: CONCERNS
+    notes: "Minor linting issues with line length and unused variables"
+recommendations:
+  immediate: []
+  future:
+    - action: "Fix linting issues (line length, unused variables)"
+      refs: ["src/bmad_crewai/checklist_executor.py", "src/bmad_crewai/quality_gate_manager.py"]

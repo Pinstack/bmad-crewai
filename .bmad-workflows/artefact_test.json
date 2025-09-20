@@ -23,7 +23,7 @@
   "execution_timeline": [
     {
       "type": "initialization",
-      "timestamp": "2025-09-18T12:57:08.506778",
+      "timestamp": "2025-09-19T19:02:02.191391",
       "description": "Conditional workflow artefact_test initialized"
     }
   ],
@@ -31,12 +31,12 @@
     "completed": 1,
     "total": 1,
     "percentage": 100.0,
-    "last_updated": "2025-09-18T12:57:08.509103"
+    "last_updated": "2025-09-19T19:02:02.192314"
   },
   "checkpoints": [
     {
       "id": "checkpoint_0",
-      "timestamp": "2025-09-18T12:57:08.508038",
+      "timestamp": "2025-09-19T19:02:02.191958",
       "task_spec": {
         "description": "Generate API documentation",
         "agent": "dev-agent",
@@ -65,10 +65,10 @@
   "error_recovery_attempts": [],
   "_metadata": {
     "workflow_id": "artefact_test",
-    "timestamp": "2025-09-18T12:57:08.509430",
+    "timestamp": "2025-09-19T19:02:02.192476",
     "version": "1.0"
   },
-  "end_time": "2025-09-18T12:57:08.509423",
+  "end_time": "2025-09-19T19:02:02.192470",
   "result": {
     "status": "success",
     "workflow_id": "artefact_test",
@@ -77,7 +77,7 @@
         "task_index": 0,
         "agent": "dev-agent",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.508977",
+        "timestamp": "2025-09-19T19:02:02.192249",
         "advanced_recovery": true,
         "message": "Documentation generated",
         "artefacts_generated": {

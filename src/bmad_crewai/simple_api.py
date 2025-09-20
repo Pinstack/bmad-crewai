@@ -36,7 +36,12 @@ class SimpleAPIClient:
         self.last_request = time.time()
 
     async def make_request(self, method: str, url: str, **kwargs) -> dict:
-        """Make API request with basic error handling."""
+        """Make API request with basic error handling.
+
+        Robustness additions:
+        - Handle HTTP 204 (no content) by returning an empty dict
+        - If Content-Type is not JSON, return a dict with status/text
+        """
         if not self.session:
             raise RuntimeError("Client not initialized. Use async context manager.")
 
@@ -58,7 +63,18 @@ class SimpleAPIClient:
                     return await self.make_request(method, url, **kwargs)  # Retry once
 
                 response.raise_for_status()
-                return await response.json()
+
+                # 204 No Content
+                if response.status == 204:
+                    return {}
+
+                # Prefer JSON if available
+                ctype = response.headers.get("Content-Type", "").lower()
+                if "application/json" in ctype or "+json" in ctype:
+                    return await response.json()
+                else:
+                    text = await response.text()
+                    return {"status": response.status, "text": text}
 
         except aiohttp.ClientError as e:
             raise Exception(f"API request failed: {e}") from e

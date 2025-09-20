@@ -78,22 +78,45 @@ class APIClient:
         # Check for rate limit headers
         retry_after = response.headers.get("Retry-After")
         if retry_after:
-            try:
-                self.rate_limit_info.backoff_until = time.time() + int(retry_after)
-                logger.warning(f"Rate limit hit. Backing off for {retry_after} seconds")
-            except ValueError:
-                pass
+            # Retry-After may be seconds or an HTTP-date
+            seconds = self._parse_retry_after(retry_after)
+            if seconds is not None:
+                self.rate_limit_info.backoff_until = time.time() + seconds
+                logger.warning(f"Rate limit hit. Backing off for {seconds} seconds")
 
         # Check for common rate limit status codes
         if response.status == 429:
             retry_after = response.headers.get("Retry-After", "60")
-            try:
-                self.rate_limit_info.backoff_until = time.time() + int(retry_after)
-                logger.warning(
-                    f"Rate limit exceeded (429). Backing off for {retry_after} seconds"
-                )
-            except ValueError:
-                self.rate_limit_info.backoff_until = time.time() + 60
+            seconds = self._parse_retry_after(retry_after)
+            self.rate_limit_info.backoff_until = time.time() + (
+                seconds if seconds is not None else 60
+            )
+            logger.warning(
+                f"Rate limit exceeded (429). Backing off for {seconds if seconds is not None else 60} seconds"
+            )
+
+    def _parse_retry_after(self, value: str) -> Optional[int]:
+        """Parse Retry-After header supporting seconds or HTTP-date.
+
+        Returns number of seconds to wait, or None if parsing fails.
+        """
+        try:
+            # Try integer seconds first
+            return int(value)
+        except Exception:
+            pass
+        try:
+            # HTTP-date format
+            from email.utils import parsedate_to_datetime
+
+            dt = parsedate_to_datetime(value)
+            if dt is None:
+                return None
+            now = time.time()
+            wait = dt.timestamp() - now
+            return max(0, int(wait))
+        except Exception:
+            return None
 
     async def _make_request_with_retry(
         self, method: str, url: str, **kwargs
@@ -115,12 +138,11 @@ class APIClient:
                     if response.status >= 400:
                         if response.status == 429:
                             retry_after = response.headers.get("Retry-After", "60")
+                            ra_seconds = self._parse_retry_after(retry_after)
                             raise RateLimitError(
                                 f"Rate limit exceeded: {await response.text()}",
                                 status_code=response.status,
-                                retry_after=(
-                                    int(retry_after) if retry_after.isdigit() else None
-                                ),
+                                retry_after=ra_seconds,
                             )
                         elif response.status >= 500:
                             # Server error - retry

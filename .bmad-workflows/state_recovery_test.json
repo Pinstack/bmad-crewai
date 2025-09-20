@@ -8,10 +8,10 @@
     "percentage": 0.0
   },
   "recovery_checkpoint": null,
-  "recovery_time": "2025-09-18T12:57:08.661901",
+  "recovery_time": "2025-09-19T19:02:02.332175",
   "_metadata": {
     "workflow_id": "state_recovery_test",
-    "timestamp": "2025-09-18T12:57:08.661905",
+    "timestamp": "2025-09-19T19:02:02.332179",
     "version": "1.0"
   }
 }

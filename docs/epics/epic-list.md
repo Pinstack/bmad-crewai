@@ -8,3 +8,6 @@ Implement BMAD agent registry, CrewAI orchestration workflows, and comprehensive
 
 ## Epic 3: Artefact Management & Workflow Orchestration
 Complete artefact generation pipeline, workflow state management, and end-to-end process execution with monitoring.
+
+## Epic 4: Hard-Case LLM Assist + Canonical Path Stability
+Keep deterministic, strict BMAD behavior while reducing false flags in language-heavy checks via a small, optional LLM assist (hard cases only) and stabilize artefact paths across documentation changes with an alias resolver and guided migration.

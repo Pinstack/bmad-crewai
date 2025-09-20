@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -540,7 +540,10 @@ class ChecklistExecutor:
         """Generate a recommendation based on a specific finding."""
         # Simple rule-based recommendations
         if "acceptance criterion" in finding.lower():
-            return "Review and clarify acceptance criteria to ensure they are measurable and testable"
+            return (
+                "Review and clarify acceptance criteria to ensure they are "
+                "measurable and testable"
+            )
         elif "test" in finding.lower():
             return f"Add {artefact_type}-appropriate testing coverage for complete validation"
         elif "security" in finding.lower():
@@ -557,7 +560,8 @@ class ChecklistExecutor:
     def _determine_gate_decision_enhanced(
         self, results: Dict[str, Any], artefact_type: str
     ) -> str:
-        """Determine gate decision with artefact-specific thresholds and critical section weighting."""
+        """Determine gate decision with artefact-specific thresholds and critical
+        section weighting."""
         overall_score = results.get("overall_score", 0)
         acceptance_threshold = results.get("acceptance_threshold", 0.8)
 
@@ -941,6 +945,95 @@ class ChecklistExecutor:
         else:
             return "FAIL"
 
+    def determine_gate_decision(
+        self, results: Dict[str, Any], gate_type: str
+    ) -> Tuple[str, str]:
+        """Authority API for computing PASS/CONCERNS/FAIL gate decisions.
+
+        This is the single authoritative source for gate decisions across the system.
+        Uses gate-type-specific thresholds while maintaining consistent policy.
+
+        Args:
+            results: Execution results from checklist execution
+            gate_type: Type of gate ('story', 'epic', 'sprint', 'release')
+
+        Returns:
+            Tuple of (decision, rationale) where:
+            - decision: 'PASS', 'CONCERNS', or 'FAIL'
+            - rationale: Human-readable explanation of the decision
+        """
+        overall_score = results.get("overall_score", 0)
+
+        # Gate-type-specific thresholds (unchanged from QualityGateManager)
+        if gate_type == "story":
+            if overall_score >= 0.95:
+                return (
+                    "PASS",
+                    "Story meets all quality criteria with excellent completion",
+                )
+            elif overall_score >= 0.85:
+                return (
+                    "CONCERNS",
+                    "Story meets basic requirements but has minor quality issues",
+                )
+            else:
+                return "FAIL", "Story does not meet minimum quality standards"
+
+        elif gate_type == "epic":
+            if overall_score >= 0.90:
+                return (
+                    "PASS",
+                    "Epic demonstrates comprehensive quality across all stories",
+                )
+            elif overall_score >= 0.75:
+                return (
+                    "CONCERNS",
+                    "Epic has acceptable quality but some areas need attention",
+                )
+            else:
+                return "FAIL", "Epic quality is insufficient for integration"
+
+        elif gate_type == "sprint":
+            if overall_score >= 0.85:
+                return "PASS", "Sprint delivers quality work with good team performance"
+            elif overall_score >= 0.70:
+                return (
+                    "CONCERNS",
+                    "Sprint acceptable but team should address quality issues",
+                )
+            else:
+                return "FAIL", "Sprint quality is unacceptable and blocks progression"
+
+        elif gate_type == "release":
+            # Release gates have the highest bar - no compromises
+            if overall_score >= 0.98:
+                return (
+                    "PASS",
+                    "Release meets all quality requirements for production deployment",
+                )
+            elif overall_score >= 0.95:
+                return (
+                    "CONCERNS",
+                    "Release has minor issues that should be documented and tracked",
+                )
+            else:
+                return (
+                    "FAIL",
+                    "Release quality is insufficient for production deployment",
+                )
+
+        else:
+            # Default to story thresholds for unknown gate types
+            if overall_score >= 0.95:
+                return "PASS", "Meets all quality criteria with excellent completion"
+            elif overall_score >= 0.85:
+                return (
+                    "CONCERNS",
+                    "Meets basic requirements but has minor quality issues",
+                )
+            else:
+                return "FAIL", "Does not meet minimum quality standards"
+
     def validate_quality_gate(
         self, checklist_id: str, gate_type: str = "story"
     ) -> Dict[str, Any]:
@@ -1107,7 +1200,10 @@ class ChecklistExecutor:
         artefact_validation = section_analysis.get("artefact_validation", {})
         if artefact_validation.get("specific_findings"):
             insights.append(
-                f"{len(artefact_validation['specific_findings'])} artefact-specific findings identified"
+                (
+                    f"{len(artefact_validation['specific_findings'])} "
+                    "artefact-specific findings identified"
+                )
             )
 
         return insights
@@ -1161,7 +1257,10 @@ class ChecklistExecutor:
         # Acceptance criteria issues
         if "acceptance" in section_lower and "criteria" in section_lower:
             if "measurable" in item_lower or "indicator" in item_lower:
-                return "Add specific, measurable success indicators (should, must, can, will, verify)"
+                return (
+                    "Add specific, measurable success indicators "
+                    "(should, must, can, will, verify)"
+                )
             return "Review and clarify acceptance criteria to ensure testability"
 
         # Testing issues
@@ -1174,7 +1273,10 @@ class ChecklistExecutor:
 
         # Security issues
         if "security" in section_lower:
-            return "Address specific security concerns (authentication, authorization, validation, etc.)"
+            return (
+                "Address specific security concerns "
+                "(authentication, authorization, validation, etc.)"
+            )
 
         # General remediation
         return "Review and enhance item to meet quality standards"
@@ -1184,7 +1286,7 @@ class ChecklistExecutor:
     ) -> Dict[str, Any]:
         """Calculate comprehensive quality indicators."""
         sections = execution_results.get("sections", {})
-        artefact_type = execution_results.get("artefact_type", "unknown")
+        # artefact_type is not used in this method but kept for potential future use
 
         indicators = {
             "completion_distribution": {
@@ -1324,7 +1426,8 @@ class ChecklistExecutor:
             suggestions.append(
                 {
                     "area": "acceptance_criteria",
-                    "suggestion": "Focus on measurable acceptance criteria with clear success indicators",
+                    "suggestion": "Focus on measurable acceptance criteria with "
+                    "clear success indicators",
                     "impact": "high",
                     "effort": "low",
                 }

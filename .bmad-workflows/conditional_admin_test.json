@@ -32,7 +32,7 @@
     {
       "from_agent": "qa-agent",
       "to_agent": "dev-agent",
-      "timestamp": "2025-09-18T12:57:08.522506",
+      "timestamp": "2025-09-19T19:02:02.200776",
       "sequence_id": 0,
       "data": {
         "task_index": 1,
@@ -49,14 +49,14 @@
   "execution_timeline": [
     {
       "type": "initialization",
-      "timestamp": "2025-09-18T12:57:08.521512",
+      "timestamp": "2025-09-19T19:02:02.199892",
       "description": "Conditional workflow conditional_admin_test initialized"
     },
     {
       "type": "handoff",
       "from_agent": "qa-agent",
       "to_agent": "dev-agent",
-      "timestamp": "2025-09-18T12:57:08.522506",
+      "timestamp": "2025-09-19T19:02:02.200776",
       "description": "Agent handoff: qa-agent → dev-agent"
     }
   ],
@@ -64,12 +64,12 @@
     "completed": 3,
     "total": 3,
     "percentage": 100.0,
-    "last_updated": "2025-09-18T12:57:08.523574"
+    "last_updated": "2025-09-19T19:02:02.201918"
   },
   "checkpoints": [
     {
       "id": "checkpoint_1",
-      "timestamp": "2025-09-18T12:57:08.521987",
+      "timestamp": "2025-09-19T19:02:02.200405",
       "task_spec": {
         "description": "Load admin dashboard",
         "agent": "dev-agent"
@@ -87,7 +87,7 @@
     },
     {
       "id": "checkpoint_2",
-      "timestamp": "2025-09-18T12:57:08.523008",
+      "timestamp": "2025-09-19T19:02:02.201312",
       "task_spec": {
         "description": "Load user dashboard",
         "agent": "dev-agent"
@@ -102,7 +102,7 @@
           "completed": 2,
           "total": 3,
           "percentage": 66.67,
-          "last_updated": "2025-09-18T12:57:08.522845"
+          "last_updated": "2025-09-19T19:02:02.201140"
         }
       }
     }
@@ -114,10 +114,10 @@
   "error_recovery_attempts": [],
   "_metadata": {
     "workflow_id": "conditional_admin_test",
-    "timestamp": "2025-09-18T12:57:08.523756",
+    "timestamp": "2025-09-19T19:02:02.202106",
     "version": "1.0"
   },
-  "end_time": "2025-09-18T12:57:08.523751",
+  "end_time": "2025-09-19T19:02:02.202102",
   "result": {
     "status": "success",
     "workflow_id": "conditional_admin_test",
@@ -126,7 +126,7 @@
         "task_index": 1,
         "agent": "dev-agent",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.522394",
+        "timestamp": "2025-09-19T19:02:02.200691",
         "advanced_recovery": true,
         "message": "Task simulated for agent dev-agent",
         "simulated": true,
@@ -143,7 +143,7 @@
         "task_index": 2,
         "agent": "dev-agent",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.523325",
+        "timestamp": "2025-09-19T19:02:02.201651",
         "advanced_recovery": true,
         "message": "Task simulated for agent dev-agent",
         "simulated": true,

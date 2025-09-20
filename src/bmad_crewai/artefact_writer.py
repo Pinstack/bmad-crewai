@@ -850,7 +850,18 @@ class BMADArtefactWriter:
                 return False
             else:
                 # Generic file writing for unsupported types
-                base_path = self.base_path / self.FOLDER_MAPPING[artefact_type]
+                try:
+                    from .utils.path_alias import resolve_path
+                except ImportError:
+                    # Fallback for test environments
+                    from bmad_crewai.utils.path_alias import resolve_path
+
+                # Normalize the artefact type path if it's a docs path
+                folder_path = self.FOLDER_MAPPING[artefact_type]
+                if folder_path.startswith("docs/"):
+                    folder_path = resolve_path(folder_path)
+
+                base_path = self.base_path / folder_path
                 if str(base_path).endswith("/"):
                     # Directory path
                     full_path = base_path / filename
@@ -1474,9 +1485,19 @@ class BMADArtefactWriter:
             Exception: For other reading errors
         """
         try:
-            file_path = self.base_path / artefact_path
+            # Import path alias resolver for normalization
+            try:
+                from .utils.path_alias import resolve_path
+            except ImportError:
+                # Fallback for test environments
+                from bmad_crewai.utils.path_alias import resolve_path
+
+            # Normalize path using alias resolver
+            normalized_path = resolve_path(artefact_path)
+
+            file_path = self.base_path / normalized_path
             if not file_path.exists():
-                raise FileNotFoundError(f"Artefact not found: {artefact_path}")
+                raise FileNotFoundError(f"Artefact not found: {normalized_path}")
 
             with open(file_path, "r", encoding="utf-8") as f:
                 return f.read()

@@ -52,6 +52,12 @@ class TestQualityGateManager:
             "acceptance_threshold": 0.95,
         }
 
+        # Mock the authority API
+        mock_executor.determine_gate_decision.return_value = (
+            "PASS",
+            "Story meets all quality criteria with excellent completion",
+        )
+
         # Act
         result = self.manager.validate_gate_with_decision(
             "story-dod-checklist", "story"
@@ -102,6 +108,12 @@ class TestQualityGateManager:
             "acceptance_threshold": 0.9,
         }
 
+        # Mock the authority API
+        mock_executor.determine_gate_decision.return_value = (
+            "CONCERNS",
+            "Epic has acceptable quality but some areas need attention",
+        )
+
         # Act
         result = self.manager.validate_gate_with_decision("po-master-checklist", "epic")
 
@@ -151,6 +163,12 @@ class TestQualityGateManager:
                 }
             ],
         }
+
+        # Mock the authority API - for release gate type
+        mock_executor.determine_gate_decision.return_value = (
+            "FAIL",
+            "Release quality is insufficient for production deployment",
+        )
 
         # Act
         result = self.manager.validate_gate_with_decision(
@@ -309,6 +327,12 @@ class TestQualityGateManager:
             "artefact_specific_findings": [],
             "acceptance_threshold": 0.95,
         }
+
+        # Mock the authority API
+        mock_executor.determine_gate_decision.return_value = (
+            "PASS",
+            "Story meets all quality criteria with excellent completion",
+        )
 
         # Mock the checklist loading to avoid "not found" error
         mock_executor.get_checklist.return_value = {

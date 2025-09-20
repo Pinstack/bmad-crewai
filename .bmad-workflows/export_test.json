@@ -18,7 +18,7 @@
   "execution_timeline": [
     {
       "type": "initialization",
-      "timestamp": "2025-09-18T12:57:08.662347",
+      "timestamp": "2025-09-19T19:02:02.332806",
       "description": "Conditional workflow export_test initialized"
     }
   ],
@@ -26,12 +26,12 @@
     "completed": 1,
     "total": 1,
     "percentage": 100.0,
-    "last_updated": "2025-09-18T12:57:08.663068"
+    "last_updated": "2025-09-19T19:02:02.333398"
   },
   "checkpoints": [
     {
       "id": "checkpoint_0",
-      "timestamp": "2025-09-18T12:57:08.662647",
+      "timestamp": "2025-09-19T19:02:02.332988",
       "task_spec": {
         "description": "Simple task",
         "agent": "dev-agent"
@@ -53,10 +53,10 @@
   "error_recovery_attempts": [],
   "_metadata": {
     "workflow_id": "export_test",
-    "timestamp": "2025-09-18T12:57:08.663209",
+    "timestamp": "2025-09-19T19:02:02.333536",
     "version": "1.0"
   },
-  "end_time": "2025-09-18T12:57:08.663204",
+  "end_time": "2025-09-19T19:02:02.333532",
   "result": {
     "status": "success",
     "workflow_id": "export_test",
@@ -65,7 +65,7 @@
         "task_index": 0,
         "agent": "dev-agent",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.662900",
+        "timestamp": "2025-09-19T19:02:02.333238",
         "advanced_recovery": true,
         "message": "Task simulated for agent dev-agent",
         "simulated": true,

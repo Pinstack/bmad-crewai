@@ -27,7 +27,7 @@
     {
       "from_agent": "dev-agent",
       "to_agent": "architect",
-      "timestamp": "2025-09-18T12:57:08.665597",
+      "timestamp": "2025-09-19T19:02:02.335544",
       "sequence_id": 0,
       "data": {
         "task_index": 1,
@@ -38,7 +38,7 @@
     {
       "from_agent": "architect",
       "to_agent": "qa-agent",
-      "timestamp": "2025-09-18T12:57:08.667056",
+      "timestamp": "2025-09-19T19:02:02.336563",
       "sequence_id": 1,
       "data": {
         "task_index": 2,
@@ -58,21 +58,21 @@
   "execution_timeline": [
     {
       "type": "initialization",
-      "timestamp": "2025-09-18T12:57:08.663900",
+      "timestamp": "2025-09-19T19:02:02.334115",
       "description": "Conditional workflow visualization_test initialized"
     },
     {
       "type": "handoff",
       "from_agent": "dev-agent",
       "to_agent": "architect",
-      "timestamp": "2025-09-18T12:57:08.665597",
+      "timestamp": "2025-09-19T19:02:02.335544",
       "description": "Agent handoff: dev-agent → architect"
     },
     {
       "type": "handoff",
       "from_agent": "architect",
       "to_agent": "qa-agent",
-      "timestamp": "2025-09-18T12:57:08.667056",
+      "timestamp": "2025-09-19T19:02:02.336563",
       "description": "Agent handoff: architect → qa-agent"
     }
   ],
@@ -80,12 +80,12 @@
     "completed": 3,
     "total": 3,
     "percentage": 100.0,
-    "last_updated": "2025-09-18T12:57:08.667530"
+    "last_updated": "2025-09-19T19:02:02.337026"
   },
   "checkpoints": [
     {
       "id": "checkpoint_0",
-      "timestamp": "2025-09-18T12:57:08.664476",
+      "timestamp": "2025-09-19T19:02:02.334583",
       "task_spec": {
         "description": "Initialize project",
         "agent": "dev-agent"
@@ -103,7 +103,7 @@
     },
     {
       "id": "checkpoint_1",
-      "timestamp": "2025-09-18T12:57:08.665118",
+      "timestamp": "2025-09-19T19:02:02.335167",
       "task_spec": {
         "description": "Setup configuration",
         "agent": "architect"
@@ -118,13 +118,13 @@
           "completed": 1,
           "total": 3,
           "percentage": 33.33,
-          "last_updated": "2025-09-18T12:57:08.664977"
+          "last_updated": "2025-09-19T19:02:02.335025"
         }
       }
     },
     {
       "id": "checkpoint_2",
-      "timestamp": "2025-09-18T12:57:08.666456",
+      "timestamp": "2025-09-19T19:02:02.336104",
       "task_spec": {
         "description": "Validate setup",
         "agent": "qa-agent"
@@ -140,7 +140,7 @@
           "completed": 2,
           "total": 3,
           "percentage": 66.67,
-          "last_updated": "2025-09-18T12:57:08.666245"
+          "last_updated": "2025-09-19T19:02:02.335922"
         }
       }
     }
@@ -150,10 +150,10 @@
   "error_recovery_attempts": [],
   "_metadata": {
     "workflow_id": "visualization_test",
-    "timestamp": "2025-09-18T12:57:08.667758",
+    "timestamp": "2025-09-19T19:02:02.337244",
     "version": "1.0"
   },
-  "end_time": "2025-09-18T12:57:08.667753",
+  "end_time": "2025-09-19T19:02:02.337239",
   "result": {
     "status": "success",
     "workflow_id": "visualization_test",
@@ -162,7 +162,7 @@
         "task_index": 0,
         "agent": "dev-agent",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.664799",
+        "timestamp": "2025-09-19T19:02:02.334852",
         "advanced_recovery": true,
         "message": "Task simulated for agent dev-agent",
         "simulated": true,
@@ -179,7 +179,7 @@
         "task_index": 1,
         "agent": "architect",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.665405",
+        "timestamp": "2025-09-19T19:02:02.335461",
         "advanced_recovery": true,
         "message": "Task simulated for agent architect",
         "simulated": true,
@@ -196,7 +196,7 @@
         "task_index": 2,
         "agent": "qa-agent",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.666900",
+        "timestamp": "2025-09-19T19:02:02.336459",
         "advanced_recovery": true,
         "message": "Task simulated for agent qa-agent",
         "simulated": true,

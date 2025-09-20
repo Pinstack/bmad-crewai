@@ -43,7 +43,7 @@
     {
       "from_agent": "qa-agent",
       "to_agent": "dev-agent",
-      "timestamp": "2025-09-18T12:57:08.518364",
+      "timestamp": "2025-09-19T19:02:02.197400",
       "sequence_id": 0,
       "data": {
         "task_index": 1,
@@ -60,14 +60,14 @@
   "execution_timeline": [
     {
       "type": "initialization",
-      "timestamp": "2025-09-18T12:57:08.516305",
+      "timestamp": "2025-09-19T19:02:02.196061",
       "description": "Conditional workflow branching_user_test initialized"
     },
     {
       "type": "handoff",
       "from_agent": "qa-agent",
       "to_agent": "dev-agent",
-      "timestamp": "2025-09-18T12:57:08.518364",
+      "timestamp": "2025-09-19T19:02:02.197400",
       "description": "Agent handoff: qa-agent → dev-agent"
     }
   ],
@@ -75,12 +75,12 @@
     "completed": 4,
     "total": 4,
     "percentage": 100.0,
-    "last_updated": "2025-09-18T12:57:08.520215"
+    "last_updated": "2025-09-19T19:02:02.198958"
   },
   "checkpoints": [
     {
       "id": "checkpoint_0",
-      "timestamp": "2025-09-18T12:57:08.516982",
+      "timestamp": "2025-09-19T19:02:02.196378",
       "task_spec": {
         "description": "Evaluate user access level",
         "agent": "qa-agent"
@@ -98,7 +98,7 @@
     },
     {
       "id": "checkpoint_1",
-      "timestamp": "2025-09-18T12:57:08.517866",
+      "timestamp": "2025-09-19T19:02:02.197015",
       "task_spec": {
         "description": "Grant admin permissions",
         "agent": "dev-agent",
@@ -119,13 +119,13 @@
           "completed": 1,
           "total": 4,
           "percentage": 25.0,
-          "last_updated": "2025-09-18T12:57:08.517671"
+          "last_updated": "2025-09-19T19:02:02.196856"
         }
       }
     },
     {
       "id": "checkpoint_3",
-      "timestamp": "2025-09-18T12:57:08.519238",
+      "timestamp": "2025-09-19T19:02:02.198246",
       "task_spec": {
         "description": "Send welcome email",
         "agent": "dev-agent"
@@ -141,7 +141,7 @@
           "completed": 2,
           "total": 4,
           "percentage": 50.0,
-          "last_updated": "2025-09-18T12:57:08.518879"
+          "last_updated": "2025-09-19T19:02:02.198001"
         }
       }
     }
@@ -153,10 +153,10 @@
   "error_recovery_attempts": [],
   "_metadata": {
     "workflow_id": "branching_user_test",
-    "timestamp": "2025-09-18T12:57:08.520457",
+    "timestamp": "2025-09-19T19:02:02.199181",
     "version": "1.0"
   },
-  "end_time": "2025-09-18T12:57:08.520452",
+  "end_time": "2025-09-19T19:02:02.199177",
   "result": {
     "status": "success",
     "workflow_id": "branching_user_test",
@@ -165,7 +165,7 @@
         "task_index": 0,
         "agent": "qa-agent",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.517387",
+        "timestamp": "2025-09-19T19:02:02.196664",
         "advanced_recovery": true,
         "message": "Task simulated for agent qa-agent",
         "simulated": true,
@@ -182,7 +182,7 @@
         "task_index": 1,
         "agent": "dev-agent",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.518242",
+        "timestamp": "2025-09-19T19:02:02.197318",
         "advanced_recovery": true,
         "message": "Task simulated for agent dev-agent",
         "simulated": true,
@@ -199,7 +199,7 @@
         "task_index": 3,
         "agent": "dev-agent",
         "status": "success",
-        "timestamp": "2025-09-18T12:57:08.519785",
+        "timestamp": "2025-09-19T19:02:02.198657",
         "advanced_recovery": true,
         "message": "Task simulated for agent dev-agent",
         "simulated": true,
